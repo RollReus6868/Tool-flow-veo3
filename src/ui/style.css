@@ -1,0 +1,577 @@
+/* ==========================================================================
+   Flow Automation Studio — giao diện
+   Phong cách lấy theo ảnh tool mẫu: nền tối, thanh điều hướng dọc bên trái,
+   thẻ bo góc, điểm nhấn tím → hồng.
+   ========================================================================== */
+
+:root {
+  --bg:          #0f1117;
+  --bg-2:        #141722;
+  --surface:     #1a1d29;
+  --surface-2:   #21243312;
+  --border:      #272b3b;
+  --border-soft: #1f2330;
+
+  --text:        #e7e9f3;
+  --text-dim:    #9297ad;
+  --text-faint:  #666c85;
+
+  --primary:     #7c5cff;
+  --primary-2:   #a855f7;
+  --pink:        #ec4899;
+  --cyan:        #22d3ee;
+
+  --ok:          #22c55e;
+  --warn:        #f59e0b;
+  --err:         #ef4444;
+
+  --radius:   14px;
+  --radius-s: 10px;
+  --nav-w:    212px;
+
+  --grad: linear-gradient(135deg, var(--primary) 0%, var(--pink) 100%);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: "Segoe UI", system-ui, -apple-system, "Noto Sans", sans-serif;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  display: flex;
+}
+
+/* ── Thanh điều hướng dọc ────────────────────────────────────────────── */
+
+.nav {
+  width: var(--nav-w);
+  flex: 0 0 var(--nav-w);
+  background: var(--bg-2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 16px 14px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.brand-logo {
+  width: 34px; height: 34px;
+  flex: 0 0 34px;
+  border-radius: 9px;
+  background: var(--grad);
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+}
+
+.brand-name   { font-weight: 700; font-size: 13px; letter-spacing: .3px; }
+.brand-sub    { font-size: 10px; color: var(--text-faint); letter-spacing: 1.4px; text-transform: uppercase; }
+
+.nav-group  { padding: 14px 12px 4px; }
+.nav-label  { font-size: 9.5px; letter-spacing: 1.3px; text-transform: uppercase; color: var(--text-faint); padding: 0 8px 7px; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  margin-bottom: 2px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.nav-item:hover  { background: #1e2230; color: var(--text); }
+.nav-item.active { background: #262038; color: #fff; font-weight: 600; }
+.nav-item.active .nav-ico { background: var(--grad); color: #fff; }
+
+.nav-ico {
+  width: 24px; height: 24px;
+  flex: 0 0 24px;
+  border-radius: 7px;
+  background: #232739;
+  display: grid; place-items: center;
+  font-size: 12px;
+}
+
+.nav-foot {
+  margin-top: auto;
+  padding: 12px 16px 14px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 11.5px;
+}
+.nav-stat { display: flex; justify-content: space-between; padding: 3px 0; color: var(--text-dim); }
+.nav-stat b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* ── Vùng nội dung ───────────────────────────────────────────────────── */
+
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+.topbar {
+  height: 48px;
+  flex: 0 0 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+}
+.topbar h1 { font-size: 14px; font-weight: 600; }
+.topbar .spacer { flex: 1; }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: #1e2230;
+  border: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); }
+.dot.ok { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.dot.warn { background: var(--warn); }
+.dot.err { background: var(--err); }
+
+.pane { flex: 1; overflow-y: auto; padding: 18px; display: none; }
+.pane.active { display: block; }
+.pane.nopad { padding: 0; overflow: hidden; display: none; }
+.pane.nopad.active { display: flex; flex-direction: column; }
+
+/* ── Thẻ ─────────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 13px;
+}
+.card-head h3 { font-size: 13.5px; font-weight: 600; }
+.card-head .spacer { flex: 1; }
+
+.hint { font-size: 11.5px; color: var(--text-faint); line-height: 1.55; }
+.hint.warnbox {
+  background: #2a1f14;
+  border: 1px solid #4a3418;
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-s);
+  padding: 10px 12px;
+  color: #e3c08a;
+}
+/* Vạch ngăn trong một thẻ: hai card Tải về nay gom cả phần đổi tên, dài gấp
+   đôi trước — không có vạch thì mắt không thấy đâu là chỗ chuyển ý. */
+.sep {
+  height: 1px;
+  background: var(--line, #262b3a);
+  margin: 14px 0 12px;
+}
+
+.hint.okbox {
+  background: #13291c;
+  border: 1px solid #1f4b30;
+  border-left: 3px solid var(--ok);
+  border-radius: var(--radius-s);
+  padding: 10px 12px;
+  color: #9ae0b4;
+}
+
+/* ── Lưới thống kê ───────────────────────────────────────────────────── */
+
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 15px;
+}
+.stat-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.stat-label { font-size: 10px; letter-spacing: 1.1px; text-transform: uppercase; color: var(--text-faint); }
+.stat-ico { font-size: 14px; opacity: .75; }
+.stat-value { font-size: 26px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat-sub { font-size: 11px; color: var(--text-faint); margin-top: 3px; }
+
+/* ── Điều khiển biểu mẫu ─────────────────────────────────────────────── */
+
+.field { margin-bottom: 12px; }
+.field:last-child { margin-bottom: 0; }
+
+.label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-bottom: 5px;
+}
+
+input[type="text"], input[type="number"], select, textarea {
+  width: 100%;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: #12151f;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  transition: border-color .12s, box-shadow .12s;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px #7c5cff22;
+}
+/* Cố tình KHÔNG dùng font monospace cho prompt: chữ tiếng Việt có dấu bị vỡ
+   trên nhiều font monospace (dấu rơi lệch khỏi nguyên âm, kiểu "chuâ n bi").
+   Prompt là văn xuôi chứ không phải mã nguồn nên monospace chẳng lợi gì. */
+textarea {
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.65;
+}
+select { cursor: pointer; }
+
+.row { display: flex; gap: 10px; }
+.row > * { flex: 1; min-width: 0; }
+
+.switchline {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 0;
+  cursor: pointer;
+  font-size: 12.5px;
+}
+.switchline input { display: none; }
+.sw {
+  width: 34px; height: 19px;
+  flex: 0 0 34px;
+  border-radius: 999px;
+  background: #2c3145;
+  position: relative;
+  transition: background .15s;
+}
+.sw::after {
+  content: '';
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 15px; height: 15px;
+  border-radius: 50%;
+  background: #8d93ab;
+  transition: transform .15s, background .15s;
+}
+.switchline input:checked + .sw { background: var(--primary); }
+.switchline input:checked + .sw::after { transform: translateX(15px); background: #fff; }
+
+/* ── Nút ─────────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: #232739;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: filter .12s, background .12s;
+}
+.btn:hover:not(:disabled) { background: #2b3049; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+
+.btn.primary { background: var(--grad); border-color: transparent; color: #fff; font-weight: 600; }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.12); background: var(--grad); }
+.btn.ok     { background: #17361f; border-color: #275c39; color: #86efac; }
+.btn.ok:hover:not(:disabled)   { background: #1d4527; }
+.btn.danger { background: #351a1c; border-color: #5c2a2e; color: #fca5a5; }
+.btn.danger:hover:not(:disabled) { background: #432024; }
+.btn.sm { padding: 5px 10px; font-size: 11.5px; }
+
+.btnrow { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Thanh tab trình duyệt ───────────────────────────────────────────── */
+
+.tabstrip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  flex: 0 0 auto;
+}
+.tabchip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: #1b1f2c;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 230px;
+}
+.tabchip:hover  { background: #232839; }
+.tabchip.active { background: #2a2340; border-color: var(--primary); color: #fff; }
+.tabchip .ttl { overflow: hidden; text-overflow: ellipsis; }
+.tabchip .x {
+  border: 0; background: transparent; color: var(--text-faint);
+  cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px;
+}
+.tabchip .x:hover { color: var(--err); }
+
+#browserPane { flex: 1; background: #0b0d13; position: relative; }
+#browserPane .empty {
+  position: absolute; inset: 0;
+  display: grid; place-content: center; justify-items: center; gap: 12px;
+  color: var(--text-faint); text-align: center; padding: 30px;
+}
+
+/* ── Bảng ────────────────────────────────────────────────────────────── */
+
+.tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-s); }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th {
+  background: #191d29;
+  padding: 8px 11px;
+  text-align: left;
+  font-size: 10.5px;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+td { padding: 8px 11px; border-bottom: 1px solid var(--border-soft); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+/* Cột Prompt co lại nhường chỗ cho cột Tên file, nếu không tên file dài bị
+   ngắt giữa chừng kiểu "01_chu_meo_tam_th / e.mp4" — rất khó đọc. */
+td.wrap { max-width: 380px; word-break: break-word; }
+td.file { font-size: 11.5px; color: var(--text-dim); word-break: break-all; }
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 600; }
+.badge.wait { background: #2a2f42; color: var(--text-dim); }
+.badge.run  { background: #1e2e52; color: #93c5fd; }
+.badge.ok   { background: #17361f; color: #86efac; }
+.badge.err  { background: #351a1c; color: #fca5a5; }
+
+/* ── Nhật ký ─────────────────────────────────────────────────────────── */
+
+#logBox {
+  height: calc(100vh - 210px);
+  min-height: 260px;
+  overflow-y: auto;
+  background: #0b0d13;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  padding: 10px 12px;
+  /* Cùng lý do với ô prompt: nhật ký toàn tiếng Việt có dấu. Cột giờ vẫn
+     thẳng hàng nhờ tabular-nums, không cần monospace. */
+  font-size: 12px;
+  line-height: 1.7;
+}
+.logline { display: flex; gap: 10px; padding: 1px 0; }
+.logline .t { color: var(--text-faint); flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.logline .m { word-break: break-word; }
+.logline.info    .m { color: #b9bed3; }
+.logline.success .m { color: #86efac; }
+.logline.warning .m { color: #fcd34d; }
+.logline.error   .m { color: #fca5a5; }
+
+.progress { height: 6px; border-radius: 999px; background: #22263a; overflow: hidden; margin-top: 10px; }
+.progress > i { display: block; height: 100%; width: 0; background: var(--grad); transition: width .3s; }
+
+.chipset { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ── Ô chọn nhỏ trên thanh tab ──────────────────────────────────────── */
+.mini-select {
+  width: auto;
+  min-width: 132px;
+  max-width: 190px;
+  padding: 5px 9px;
+  font-size: 11.5px;
+  flex: 0 0 auto;
+}
+
+/* ── Nút radio dạng thẻ ─────────────────────────────────────────────── */
+.radioline {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: #12151f;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.radioline input { accent-color: var(--primary); }
+.radioline:has(input:checked) {
+  border-color: var(--primary);
+  background: #241e3a;
+  color: #fff;
+  font-weight: 600;
+}
+
+.empty-row { color: var(--text-faint); text-align: center; padding: 22px; }
+
+/* ── Hộp thoại tự làm ────────────────────────────────────────────────
+   Electron không cài đặt window.prompt(), nên mọi chỗ cần hỏi một dòng chữ
+   đều phải dùng hộp thoại này. */
+.modal-mask {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(5, 7, 12, .72);
+  display: grid; place-items: center;
+}
+.modal {
+  width: min(460px, calc(100vw - 48px));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .55);
+}
+.modal h3 { font-size: 14.5px; margin-bottom: 6px; }
+
+/* ── Tiến độ từng tab ────────────────────────────────────────────────── */
+.tprow {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: #12151f;
+  margin-bottom: 8px;
+}
+.tprow.run { border-color: #3d3363; background: #171528; }
+.tprow-id { flex: 0 0 auto; width: 150px; }
+.tprow-name { font-weight: 600; font-size: 12.5px; display: flex; align-items: center; gap: 7px; }
+.tprow-acc { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+/* Cột giữa nay gánh ba dòng chữ (tiến độ, phần trăm, trạng thái tải) nên
+   phải có chỗ thở, nếu không chữ xuống dòng lung tung và hàng cao gấp đôi. */
+.tprow-bar { flex: 1 1 auto; min-width: 190px; }
+.tprow-bar .progress { margin-top: 0; }
+.tprow-nums {
+  flex: 0 0 auto; display: flex; gap: 11px; text-align: center;
+  font-size: 11.5px; font-variant-numeric: tabular-nums;
+}
+.tprow-nums b { display: block; font-size: 15px; }
+.tprow-nums .ok b   { color: #86efac; }
+.tprow-nums .run b  { color: #93c5fd; }
+.tprow-nums .err b  { color: #fca5a5; }
+.tprow-nums .dl b   { color: #c4b5fd; }
+.tprow-nums span.lbl { color: var(--text-faint); font-size: 10px; text-transform: uppercase; letter-spacing: .6px; }
+
+/* Dòng trạng thái tải, ngay dưới thanh tiến độ. Tạo xong chưa phải là đã tải —
+   còn đổi tên trên Flow rồi chờ máy chủ xuất file, mất thêm vài chục giây. */
+.tprow-acc.tai      { font-variant-numeric: tabular-nums; }
+.tprow-acc.tai.ok   { color: #86efac; }
+.tprow-acc.tai.run  { color: #93c5fd; }
+.tprow-acc.tai.err  { color: #fca5a5; }
+.tprow-act { flex: 0 0 auto; display: flex; gap: 5px; }
+
+/* ── Thẻ tài khoản ──────────────────────────────────────────────────── */
+.acc {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: #12151f;
+  margin-bottom: 9px;
+}
+.acc-avatar {
+  width: 38px; height: 38px; flex: 0 0 38px;
+  border-radius: 10px;
+  background: var(--grad);
+  display: grid; place-items: center;
+  font-size: 15px; font-weight: 700; color: #fff;
+}
+.acc-body { flex: 1; min-width: 0; }
+.acc-name { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.acc-meta { font-size: 11.5px; color: var(--text-faint); margin-top: 2px; word-break: break-all; }
+.acc-actions { display: flex; gap: 6px; flex-wrap: wrap; flex: 0 0 auto; }
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2e3347; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #3b415a; }
+
+.hidden { display: none !important; }
+
+/* ── Bố cục chia đôi: Prompt bên trái, Cài đặt bên phải ────────────────
+   Gộp hai mục làm một để khỏi phải nhảy qua lại khi vừa soạn prompt vừa
+   chỉnh cài đặt. Hai cột cuộn ĐỘC LẬP, nếu không cột dài kéo cột kia đi
+   theo và mất chỗ đang đọc. */
+.pane.split { display: none; padding: 0; overflow: hidden; }
+.pane.split.active { display: flex; }
+
+.split-left,
+.split-right {
+  flex: 1 1 50%;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 18px;
+}
+.split-right {
+  flex: 1 1 46%;
+  border-left: 1px solid var(--border);
+  background: #101320;
+}
+
+/* Màn hẹp thì xếp dọc, không ép hai cột bẹp dí */
+@media (max-width: 1180px) {
+  .pane.split.active { flex-direction: column; overflow-y: auto; }
+  .split-left, .split-right { flex: none; overflow: visible; }
+  .split-right { border-left: 0; border-top: 1px solid var(--border); }
+}
+
+/* ── Cập nhật ─────────────────────────────────────────────────────────── */
+.pill-cap-nhat { cursor:pointer; background:#1e3a8a; border-color:#3b82f6; color:#dbeafe; font:inherit; }
+.pill-cap-nhat:hover { background:#1d4ed8; }
+.capnhat-tien-do { height:6px; background:#1f2433; border-radius:4px; overflow:hidden; }
+.capnhat-tien-do > div { height:100%; width:0; background:#3b82f6; transition:width .3s; }
+/* .pill đặt display:inline-flex nên thuộc tính hidden bị lấn — phải nói rõ. */
+.pill-cap-nhat[hidden], .capnhat-tien-do[hidden] { display:none !important; }

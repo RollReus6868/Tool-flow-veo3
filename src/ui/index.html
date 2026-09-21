@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Flow Automation Studio</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ══════════════════ THANH ĐIỀU HƯỚNG ══════════════════ -->
+<nav class="nav">
+  <div class="brand">
+    <div class="brand-logo">▶</div>
+    <div>
+      <div class="brand-name">FLOW AUTO</div>
+      <div class="brand-sub">Studio</div>
+    </div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-label">Tự động hoá</div>
+    <button class="nav-item active" data-pane="overview"><span class="nav-ico">▦</span>Tổng quan</button>
+    <button class="nav-item" data-pane="run"><span class="nav-ico">▶</span>Prompt và Cài đặt</button>
+    <button class="nav-item" data-pane="i2v"><span class="nav-ico">🖼</span>Ảnh → Video</button>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-label">Trình duyệt</div>
+    <button class="nav-item" data-pane="accounts"><span class="nav-ico">👤</span>Tài khoản</button>
+    <button class="nav-item" data-pane="browser"><span class="nav-ico">◱</span>Cửa sổ Flow</button>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-label">Hệ thống</div>
+    <button class="nav-item" data-pane="projects"><span class="nav-ico">🗂</span>Dự án</button>
+    <button class="nav-item" data-pane="logs"><span class="nav-ico">▤</span>Nhật ký</button>
+  </div>
+
+  <div class="nav-foot">
+    <div class="nav-stat"><span>Tài khoản</span><b id="navAccounts">0</b></div>
+    <div class="nav-stat"><span>Tab đang mở</span><b id="navTabs">0</b></div>
+    <div class="nav-stat"><span>Prompt còn lại</span><b id="navPending">0</b></div>
+    <div class="nav-stat"><span>Đã xong</span><b id="navDone">0</b></div>
+  </div>
+</nav>
+
+<!-- ══════════════════ NỘI DUNG ══════════════════ -->
+<div class="main">
+
+  <div class="topbar">
+    <h1 id="paneTitle">Tổng quan</h1>
+    <div class="spacer"></div>
+    <span class="pill"><i class="dot" id="connDot"></i><span id="connText">Chưa mở tab</span></span>
+    <span class="pill"><i class="dot" id="runDot"></i><span id="runText">Đang nghỉ</span></span>
+    <span class="pill" id="verPill">v2.1.0</span>
+    <button class="pill pill-cap-nhat" id="pillCapNhat" hidden title="Có bản mới — bấm để xem">⬆ Có bản mới</button>
+  </div>
+
+  <!-- ─────────── TỔNG QUAN ─────────── -->
+  <section class="pane active" id="pane-overview">
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-top"><span class="stat-label">Tổng prompt</span><span class="stat-ico">▤</span></div>
+        <div class="stat-value" id="stTotal">0</div>
+        <div class="stat-sub" id="stTotalSub">trong danh sách</div>
+      </div>
+      <div class="stat">
+        <div class="stat-top"><span class="stat-label">Đã hoàn tất</span><span class="stat-ico">✓</span></div>
+        <div class="stat-value" id="stDone">0</div>
+        <div class="stat-sub" id="stDoneSub">0% tiến độ</div>
+      </div>
+      <div class="stat">
+        <div class="stat-top"><span class="stat-label">Đang chạy</span><span class="stat-ico">⟳</span></div>
+        <div class="stat-value" id="stRunning">0</div>
+        <div class="stat-sub">tab hoạt động</div>
+      </div>
+      <div class="stat">
+        <div class="stat-top"><span class="stat-label">Lỗi</span><span class="stat-ico">⚠</span></div>
+        <div class="stat-value" id="stFailed">0</div>
+        <div class="stat-sub">cần xem lại</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Bắt đầu thế nào</h3></div>
+      <p class="hint" style="margin-bottom:12px">
+        <b>1.</b> Mục <b>Tài khoản</b> → <b>+ Thêm tài khoản</b> → bấm <b>Mở tab</b> rồi đăng nhập Google.
+        Mỗi tài khoản có kho cookie riêng, đăng nhập cái này không đá cái kia ra.<br>
+        <b>2.</b> Trên trang Flow, chỉnh sẵn <b>chế độ, tỉ lệ khung, số lượng</b> như ý muốn.<br>
+        <b>3.</b> Mục <b>Chạy prompt</b> → dán danh sách → chọn tab → <b>Bắt đầu</b>.
+      </p>
+      <div class="hint okbox">
+        <b>Prompt dài không còn bị cắt.</b> App bơm chữ qua đường điều khiển Chromium
+        (<code>Input.insertText</code>) — cùng đường bàn phím thật đi — rồi <b>đọc ngược lại</b> và
+        đếm. Thiếu chữ là báo lỗi kèm số, không âm thầm tạo video sai.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Tiến độ theo prompt</h3><div class="spacer"></div>
+        <span class="pill" id="tableCount">0 dòng</span>
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th style="width:44px">#</th><th>Prompt</th><th style="width:130px">Tài khoản</th><th style="width:66px">Tab</th><th style="width:130px">Trạng thái</th><th style="width:150px">Tải về</th></tr></thead>
+          <tbody id="progressTable"><tr><td colspan="6" class="empty-row">Chưa có dữ liệu</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── PROMPT VÀ CÀI ĐẶT ─────────── -->
+  <section class="pane split" id="pane-run">
+    <div class="split-left">
+
+    <div class="card">
+      <div class="card-head">
+        <h3>Danh sách prompt</h3>
+        <div class="spacer"></div>
+        <div class="chipset">
+          <span class="pill" id="promptCount">0 prompt</span>
+          <span class="pill" id="promptChars">0 ký tự</span>
+          <span class="pill" id="promptLongest">dài nhất: 0</span>
+        </div>
+      </div>
+
+      <div class="btnrow" style="margin-bottom:12px">
+        <button class="btn sm" id="btnImport">⬆ Nhập .txt</button>
+        <button class="btn sm" id="btnExport">⬇ Xuất .txt</button>
+        <button class="btn sm" id="btnDedupe">⧉ Bỏ trùng</button>
+        <button class="btn sm danger" id="btnClear">✕ Xoá hết</button>
+      </div>
+
+      <div class="field">
+        <label class="label" for="promptSeparator">Cách tách prompt</label>
+        <select id="promptSeparator">
+          <option value="line">Mỗi dòng = 1 prompt (mặc định)</option>
+          <option value="blank">Dòng trống = ngắt prompt (cho prompt nhiều dòng)</option>
+          <option value="dash">Dòng "---" = ngắt prompt</option>
+          <option value="eq">Dòng "===" = ngắt prompt</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <textarea id="promptsInput" rows="10" spellcheck="false"
+          placeholder="Dán prompt vào đây…&#10;&#10;• Mỗi dòng một prompt, hoặc chọn kiểu tách khác ở trên để dùng prompt nhiều dòng.&#10;• KHÔNG giới hạn độ dài mỗi prompt.&#10;• Kéo–thả file .txt vào khung này để nạp nhanh."></textarea>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Chạy những prompt nào</h3><div class="spacer"></div>
+        <span class="pill" id="rangeInfo">tất cả</span>
+      </div>
+      <div class="row">
+        <div class="field"><label class="label" for="startIndex">Từ prompt số</label>
+          <input type="number" id="startIndex" min="1" value="1"></div>
+        <div class="field"><label class="label" for="endIndex">Đến prompt số</label>
+          <input type="number" id="endIndex" min="1" placeholder="để trống = hết"></div>
+      </div>
+      <label class="switchline"><input type="checkbox" id="useCustomRange"><span class="sw"></span><span>Dùng danh sách số tuỳ chọn thay cho khoảng trên</span></label>
+      <div class="field hidden" id="customIndicesWrap">
+        <input type="text" id="customIndices" placeholder="Ví dụ: 1,5,9-12,20">
+        <p class="hint" style="margin-top:5px">Ngăn bằng dấu phẩy, dùng gạch nối cho một khoảng.</p>
+      </div>
+    </div>
+
+
+
+    <div class="card">
+      <div class="card-head"><h3>Tự nối ảnh → video</h3></div>
+      <label class="switchline"><input type="checkbox" id="chainEnabled"><span class="sw"></span><span><b>Tạo ảnh xong thì tự chạy tiếp thành video</b> — không cần ngồi canh</span></label>
+      <div id="chainBox" class="hidden">
+        <div class="hint warnbox" style="margin:10px 0">
+          Chỉ có tác dụng khi <b>Cài đặt → Chế độ chạy</b> đang là <b>Tạo ảnh</b>.
+          Mỗi tab tự nối phần ảnh của riêng nó, nên nhiều tab và nhiều tài khoản
+          chạy chuỗi song song mà không đụng nhau.
+        </div>
+        <div class="field">
+          <label class="label" for="chainPrompt">Câu lệnh video dùng cho mọi ảnh vừa tạo</label>
+          <textarea id="chainPrompt" rows="2" placeholder="Ví dụ: làm ảnh này chuyển động nhẹ, máy quay lia chậm…"></textarea>
+        </div>
+        <div class="field">
+          <label class="label" for="chainNameSource">Lấy mã ảnh từ đâu</label>
+          <select id="chainNameSource">
+            <option value="auto">Tự đánh số theo thứ tự prompt (khuyến nghị)</option>
+            <option value="range">Theo khai báo ở khối "Kho ảnh Flow" (mục Ảnh → Video)</option>
+          </select>
+        </div>
+        <div class="hint" id="chainNamePreview">—</div>
+        <label class="switchline"><input type="checkbox" id="chainSkipIfFailed" checked><span class="sw"></span><span>Chỉ nối khi mẻ ảnh sạch lỗi (an toàn hơn)</span></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Giao việc cho tab</h3><div class="spacer"></div>
+        <span class="pill" id="assignHint">—</span>
+      </div>
+      <div class="field">
+        <label class="label" for="planMode">Kiểu chia</label>
+        <select id="planMode">
+          <option value="split">Chia đều cho mọi tab đã chọn</option>
+          <option value="account">Chia theo tài khoản — mỗi tài khoản một dải riêng</option>
+        </select>
+        <p class="hint" style="margin-top:5px" id="planModeHint"></p>
+      </div>
+      <div id="tabPicker" class="chipset"></div>
+    </div>
+
+
+    <div class="card">
+      <div class="card-head"><h3>Chế độ trên trang Flow</h3><div class="spacer"></div>
+        <span class="pill" id="flowModeNow">chưa rõ</span>
+      </div>
+      <p class="hint" style="margin-bottom:10px">
+        App <b>tự đặt đúng chế độ trước mỗi mẻ</b>, nên bình thường không phải đụng tới đây.
+        Mục này để bạn đặt sẵn từ đầu hoặc chữa tay khi Google đổi giao diện làm phần tự động trượt.
+        Flow <b>nhớ chế độ theo từng dự án</b> — đặt một lần là giữ nguyên cho tới khi có gì đổi nó.
+      </p>
+      <div class="field">
+        <label class="label" for="modeTab">Áp cho tab</label>
+        <select id="modeTab" class="mini-select" style="width:100%;max-width:none"></select>
+      </div>
+      <div class="btnrow">
+        <button class="btn" id="btnModeImage">🖼 Đặt sang Tạo ảnh</button>
+        <button class="btn" id="btnModeVideo">🎬 Đặt sang Tạo video</button>
+        <button class="btn sm" id="btnModeCheck">⟳ Đọc chế độ hiện tại</button>
+      </div>
+      <p class="hint" id="flowModeResult" style="margin-top:9px"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Tiến độ từng tab</h3><div class="spacer"></div>
+        <span class="pill" id="tabProgSummary">chưa chạy</span>
+        <button class="btn sm" id="btnRefreshStats">⟳</button>
+      </div>
+      <div id="tabProgress"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Điều khiển</h3></div>
+      <div class="btnrow">
+        <button class="btn primary" id="btnStart">▶ Bắt đầu</button>
+        <button class="btn" id="btnPause" disabled>⏸ Tạm dừng</button>
+        <button class="btn ok" id="btnResume" disabled>⏵ Chạy tiếp</button>
+        <button class="btn danger" id="btnStop" disabled>⏹ Dừng hẳn</button>
+      </div>
+      <p class="hint" style="margin-top:8px">
+        Tạm dừng / Chạy tiếp / Dừng áp cho <b>các tab đã chọn ở trên</b>; không chọn tab nào thì áp cho tất cả.
+        Tab đang chạy vẫn nhận được lệnh riêng ở bảng <b>Tiến độ từng tab</b>.
+      </p>
+      <div class="progress"><i id="progressBar"></i></div>
+      <p class="hint" id="progressText" style="margin-top:7px">Chưa chạy</p>
+    </div>
+    </div>
+
+    <div class="split-right">
+
+
+    <div class="card">
+      <div class="card-head"><h3>Tạo nội dung</h3></div>
+      <div class="field">
+        <label class="label">Chế độ chạy</label>
+        <div class="btnrow">
+          <label class="radioline"><input type="radio" name="runMode" value="video" checked><span>🎬 Tạo video</span></label>
+          <label class="radioline"><input type="radio" name="runMode" value="image"><span>🖼 Tạo ảnh</span></label>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field"><label class="label" for="aspectRatio">Tỉ lệ khung hình</label>
+          <select id="aspectRatio">
+            <option value="16:9">16:9 ngang</option>
+            <option value="9:16">9:16 dọc</option>
+          </select></div>
+        <div class="field"><label class="label" for="outputCount">Số lượng mỗi prompt</label>
+          <select id="outputCount"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></div>
+      </div>
+      <label class="switchline"><input type="checkbox" id="addIndex" checked><span class="sw"></span><span>Thêm số thứ tự vào đầu câu lệnh gửi Flow</span></label>
+      <label class="switchline"><input type="checkbox" id="randomScroll"><span class="sw"></span><span>Cuộn trang ngẫu nhiên giữa các lần tạo</span></label>
+    </div>
+
+    <div class="card" id="theModelVideo">
+      <div class="card-head"><h3>🎚 Model video</h3></div>
+      <p class="hint" style="margin-bottom:10px">
+        Để trống cả mục này thì app <b>không đụng</b> tới hộp chọn model — Flow đang chọn gì thì chạy nấy,
+        y như bản cũ. Chỉ áp cho mẻ <b>video</b> (kể cả mẻ video tự nối sau ảnh).
+      </p>
+      <datalist id="dsModel">
+        <option value="Veo 3.1 - Lite [Lower Priority]">
+        <option value="Veo 3.1 - Lite">
+        <option value="Veo 3.1 - Fast">
+        <option value="Veo 3.1 - Quality">
+        <option value="Omni 1.1 Flash">
+      </datalist>
+      <div class="field">
+        <label class="label" for="modelChinh">Model chính</label>
+        <input type="text" id="modelChinh" list="dsModel" placeholder="(giữ nguyên model đang chọn trên Flow)">
+      </div>
+
+      <div class="sep"></div>
+      <p class="hint" style="margin-bottom:8px"><b>Tự chuyển khi Lower Priority bị chặn</b> — nên dùng.</p>
+      <div class="row">
+        <div class="field"><label class="label" for="modelDuPhong">Model dự phòng (tốn credit)</label>
+          <input type="text" id="modelDuPhong" list="dsModel" placeholder="(không — cho tài khoản nghỉ như cũ)"></div>
+        <div class="field"><label class="label" for="modelThuLai">Thử lại Lower Priority sau (phút)</label>
+          <input type="number" id="modelThuLai" min="5" max="240" value="30"></div>
+      </div>
+      <p class="hint" style="margin-top:4px">
+        Đang chạy <b>Lower Priority</b> mà Flow báo hoạt động bất thường: app <b>ngừng gửi Lower Priority</b> của
+        tài khoản đó, đổi sang model dự phòng và chạy tiếp ngay (prompt vừa hỏng được thử lại bằng model dự phòng).
+        Hết giờ thì prompt mới quay lại Lower Priority; bị lại thì chờ gấp đôi. Nếu model dự phòng <i>cũng</i> hỏng
+        thì đó là cả tài khoản bị nhắc — chế độ an toàn cho nghỉ như bình thường.
+      </p>
+
+      <div class="sep"></div>
+      <p class="hint" style="margin-bottom:8px"><b>Xen kẽ hai model</b> — để chia chi phí, <i>không</i> giúp tránh bị chặn.</p>
+      <div class="row">
+        <div class="field"><label class="label" for="modelPhu">Model phụ</label>
+          <input type="text" id="modelPhu" list="dsModel" placeholder="(không xen kẽ)"></div>
+        <div class="field"><label class="label" for="modelXenKe">Cứ N prompt thì 1 prompt dùng model phụ</label>
+          <input type="number" id="modelXenKe" min="0" max="50" value="0"></div>
+      </div>
+      <p class="hint" id="modelXenKeHint" style="margin-top:4px">N = 2 là luân phiên 1–1. 0 = tắt.</p>
+
+      <div class="sep"></div>
+      <div class="btnrow">
+        <button class="btn sm" id="btnDocModel">🔎 Đọc danh sách model từ tab Flow đang mở</button>
+      </div>
+      <p class="hint" id="docModelKq" style="margin-top:6px">
+        Tên model phải khớp đúng chữ trên Flow. Bấm nút này để app đọc thẳng từ trang và điền gợi ý —
+        đồng thời là phép thử nhanh xem app có bấm được hộp chọn model không.
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Nhịp chạy &amp; thử lại</h3></div>
+      <label class="switchline"><input type="checkbox" id="randomDelay" checked><span class="sw"></span><span><b>Ngẫu nhiên thời gian chờ</b> giữa các lần tạo</span></label>
+      <div class="row">
+        <div class="field"><label class="label" for="delayMin">Chờ tối thiểu (giây)</label>
+          <input type="number" id="delayMin" min="1" value="20"></div>
+        <div class="field" id="delayMaxWrap"><label class="label" for="delayMax">Chờ tối đa (giây)</label>
+          <input type="number" id="delayMax" min="1" value="30"></div>
+        <div class="field"><label class="label" for="maxRetries">Số lần thử lại khi lỗi</label>
+          <input type="number" id="maxRetries" min="0" value="5"></div>
+      </div>
+      <p class="hint" id="delayHint"></p>
+      <div class="field">
+        <label class="label" for="networkGuard">Chốt chặn mất mạng</label>
+        <select id="networkGuard">
+          <option value="auto">Tự động (khuyến nghị) — nghi mất mạng thì gọi thử Flow rồi mới dừng</option>
+          <option value="off">Bỏ qua hẳn — không bao giờ dừng vì báo mất mạng</option>
+        </select>
+        <p class="hint" style="margin-top:5px">
+          Chrome hay báo sai "mất mạng" sau khi máy ngủ dậy, khi bật VPN, hoặc trên VPS.
+          Chọn <b>Bỏ qua hẳn</b> nếu máy bạn thuộc nhóm luôn báo sai — đổi lại, lúc mất mạng
+          thật bot sẽ văng lỗi hàng loạt thay vì đứng chờ.
+        </p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Đa tab</h3></div>
+      <p class="hint" style="margin-bottom:10px">
+        Việc chia prompt cho tab và tài khoản do app lo, đặt ở <b>Chạy prompt → Kiểu chia</b>.
+        Ở đây chỉ còn đúng một thứ mà engine thật sự đọc.
+      </p>
+      <div class="field" style="max-width:420px">
+        <label class="label" for="multiTabStagger">Giãn cách giữa các lần bấm Tạo (giây)</label>
+        <input type="number" id="multiTabStagger" min="0" max="600" value="0">
+        <p class="hint" style="margin-top:5px">
+          Để các tab không cùng bấm "Tạo" một lúc — đỡ bị Flow chặn vì dồn dập.
+          Chạy 3 tab trở lên nên đặt 5–15 giây.
+        </p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>🛡 Chế độ an toàn</h3></div>
+      <p class="hint" style="margin-bottom:10px">
+        Khi Flow hiện thẻ <b>“Chúng tôi nhận thấy có hoạt động bất thường”</b>, mọi prompt sau đó
+        đều hỏng — mà engine lại <i>thử lại</i> từng cái, nên cả mẻ cháy trong vài phút.
+        Mục này dò đúng thông báo ấy, cho <b>cả tài khoản</b> tạm nghỉ, rồi tự chạy lại.
+        <br><b>Không có mẹo nào qua mặt được Google.</b> Cách duy nhất ăn thua là gõ cửa thưa hơn,
+        và khi đã bị nhắc thì im lặng nghỉ chứ đừng cố thêm.
+      </p>
+      <label class="switchline"><input type="checkbox" id="anToanBat" checked><span class="sw"></span><span>Bật chế độ an toàn (nên bật)</span></label>
+
+      <div class="row">
+        <div class="field"><label class="label" for="anToanNguong">Số prompt hỏng thì nghi bị chặn</label>
+          <input type="number" id="anToanNguong" min="1" max="50" value="3"></div>
+        <div class="field"><label class="label" for="anToanCuaSo">…trong vòng (phút)</label>
+          <input type="number" id="anToanCuaSo" min="1" max="120" value="5"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label class="label" for="anToanNghi">Nghỉ bao lâu (phút)</label>
+          <input type="number" id="anToanNghi" min="1" max="240" value="10"></div>
+        <div class="field"><label class="label" for="anToanToiDa">Nghỉ tối đa (phút)</label>
+          <input type="number" id="anToanToiDa" min="1" max="600" value="60"></div>
+      </div>
+      <label class="switchline"><input type="checkbox" id="anToanNhanDoi" checked><span class="sw"></span><span>Bị chặn lại thì nghỉ gấp đôi (10 → 20 → 40 phút)</span></label>
+
+      <div class="sep"></div>
+      <p class="hint" style="margin-bottom:8px"><b>Giải lao định kỳ</b> — nghỉ trước khi bị nhắc, thay vì nghỉ sau.</p>
+      <div class="row">
+        <div class="field"><label class="label" for="anToanCuMoi">Nghỉ sau mỗi N prompt (0 = tắt)</label>
+          <input type="number" id="anToanCuMoi" min="0" max="500" value="0"></div>
+        <div class="field"><label class="label" for="anToanGiaiLao">Giải lao (phút)</label>
+          <input type="number" id="anToanGiaiLao" min="1" max="120" value="5"></div>
+      </div>
+
+      <div class="sep"></div>
+      <div class="row">
+        <button class="btn" id="btnNhipAnToan">⚙ Đặt nhịp chạy hiền theo số tab</button>
+      </div>
+      <p class="hint" id="nhipAnToanKq" style="margin-top:6px">
+        Bấm nút này để app tự điền <b>Giãn cách dán</b>, <b>Giãn cách giữa các tab</b>,
+        <b>Cuộn trang ngẫu nhiên</b> và <b>Số lần thử lại</b> theo số tab đang mở.
+        Càng nhiều tab của <i>cùng một tài khoản</i> thì mỗi tab phải càng thưa — Google đếm theo
+        tài khoản, không đếm theo tab.
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Character Sync &amp; Giọng nói</h3></div>
+      <label class="switchline"><input type="checkbox" id="charSync"><span class="sw"></span><span>Character Sync bằng <code>@Tên</code></span></label>
+      <label class="switchline"><input type="checkbox" id="charSyncStripTag"><span class="sw"></span><span>Xoá hẳn <code>@Tên</code> khỏi câu lệnh gửi Flow</span></label>
+      <label class="switchline"><input type="checkbox" id="keyframeSync"><span class="sw"></span><span>Đồng bộ khung hình đầu/cuối (chỉ chế độ video)</span></label>
+      <label class="switchline"><input type="checkbox" id="voiceSync"><span class="sw"></span><span>Tự chọn giọng nói (chỉ chế độ video)</span></label>
+      <div class="field">
+        <label class="label" for="voiceSelect">Giọng nói</label>
+        <select id="voiceSelect"></select>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Thư mục lưu &amp; kết thúc</h3></div>
+      <div class="field">
+        <label class="label" for="downloadDir">Thư mục lưu dự phòng</label>
+        <div class="row">
+          <input type="text" id="downloadDir" placeholder="Mặc định: thư mục Downloads" readonly>
+          <button class="btn" id="btnPickDir" style="flex:0 0 auto">📁 Chọn…</button>
+        </div>
+        <p class="hint" style="margin-top:5px">
+          <b>Thư mục riêng của từng tài khoản Flow được ưu tiên trước.</b> Ô này chỉ dùng cho
+          tài khoản nào chưa đặt thư mục riêng. Đặt thư mục riêng ở mục
+          <b>Tài khoản → 📁 Thư mục</b>.
+        </p>
+      </div>
+      <label class="switchline"><input type="checkbox" id="autoShutdown"><span class="sw"></span><span>Tắt máy khi chạy xong toàn bộ (Windows, macOS)</span></label>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>🎬 Tải về — Video</h3></div>
+      <p class="hint" style="margin-bottom:12px">Bộ này áp dụng khi <b>Chế độ chạy</b> là <b>Tạo video</b> — kể cả mẻ video do chuỗi ảnh→video tự nối.</p>
+      <div class="row">
+        <div class="field"><label class="label" for="downloadModeVideo">Cách tải</label>
+          <select id="downloadModeVideo">
+            <option value="none">Không tự tải</option>
+            <option value="single" selected>Tải từng media (có đổi tên)</option>
+            <option value="zip">Tải gộp file .zip</option>
+          </select></div>
+        <div class="field"><label class="label" for="downloadImmediatelyVideo">Thời điểm tải</label>
+          <select id="downloadImmediatelyVideo">
+            <option value="auto">Tự quyết (khuyến nghị)</option>
+            <option value="true">Tải ngay sau khi tạo xong từng cái</option>
+            <option value="false">Đợi tạo hết rồi tải hàng loạt</option>
+          </select></div>
+      </div>
+      <div class="row">
+        <div class="field"><label class="label" for="downloadQualityVideo">Chất lượng video</label>
+          <select id="downloadQualityVideo">
+            <option value="4k">4K</option>
+            <option value="1080p" selected>1080p</option>
+            <option value="720p">720p</option>
+          </select></div>
+        <div class="field"><label class="label" for="subfolderVideo">Thư mục con</label>
+          <input type="text" id="subfolderVideo" placeholder="Ví dụ: Video/{date}" maxlength="120"></div>
+      </div>
+      <p class="hint">Thẻ thay thế trong thư mục con: <code>{date}</code>, <code>{time}</code>, <code>{datetime}</code>.</p>
+
+      <div class="sep"></div>
+      <label class="switchline"><input type="checkbox" id="autoRenameVideo" checked><span class="sw"></span><span><b>Tự đổi tên file</b> khi tải về</span></label>
+      <div class="row">
+        <div class="field"><label class="label" for="renameModeVideo">Kiểu đặt tên</label>
+          <select id="renameModeVideo">
+            <option value="default">Theo prompt (STT_nội-dung)</option>
+            <option value="index_only" selected>Chỉ số thứ tự (001, 002, 003…)</option>
+            <option value="custom_list">Theo danh sách riêng</option>
+          </select></div>
+        <div class="field"><label class="label" for="renameMaxLenVideo">Số ký tự lấy từ prompt</label>
+          <input type="number" id="renameMaxLenVideo" min="0" max="150" value="30"></div>
+        <div class="field"><label class="label" for="renameIndexPadVideo">Số chữ số cho STT</label>
+          <input type="number" id="renameIndexPadVideo" min="1" max="8" value="3"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label class="label" for="renamePrefixVideo">Tiền tố</label>
+          <input type="text" id="renamePrefixVideo" placeholder="Canh" maxlength="40"></div>
+        <div class="field"><label class="label" for="renameSuffixVideo">Hậu tố</label>
+          <input type="text" id="renameSuffixVideo" placeholder="final" maxlength="40"></div>
+        <div class="field"><label class="label" for="renameStartIndexVideo">Bắt đầu từ số</label>
+          <input type="number" id="renameStartIndexVideo" min="1" value="1"></div>
+      </div>
+      <div class="field hidden" id="renameCustomListWrapVideo">
+        <label class="label" for="renameCustomListVideo">Danh sách tên riêng (mỗi dòng một tên)</label>
+        <textarea id="renameCustomListVideo" rows="5" placeholder="Tên cho prompt 1&#10;Tên cho prompt 2&#10;…"></textarea>
+      </div>
+      <div class="field">
+        <label class="label" for="asciiModeVideo">Bỏ dấu tiếng Việt</label>
+        <select id="asciiModeVideo">
+          <option value="file">Chỉ ở tên file trên máy (khuyến nghị)</option>
+          <option value="both">Cả tên trên Flow lẫn tên file</option>
+        </select>
+      </div>
+      <div class="hint okbox" id="renamePreviewVideo">Tên file sẽ là: —</div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>🖼 Tải về — Ảnh</h3></div>
+      <p class="hint" style="margin-bottom:12px">Bộ này áp dụng khi <b>Chế độ chạy</b> là <b>Tạo ảnh</b>. Tách riêng nên chạy ảnh và chạy video không phải chỉnh qua lại.</p>
+      <div class="row">
+        <div class="field"><label class="label" for="downloadModeImage">Cách tải</label>
+          <select id="downloadModeImage">
+            <option value="none">Không tự tải</option>
+            <option value="single" selected>Tải từng media (có đổi tên)</option>
+            <option value="zip">Tải gộp file .zip</option>
+          </select></div>
+        <div class="field"><label class="label" for="downloadImmediatelyImage">Thời điểm tải</label>
+          <select id="downloadImmediatelyImage">
+            <option value="auto">Tự quyết (khuyến nghị)</option>
+            <option value="true">Tải ngay sau khi tạo xong từng cái</option>
+            <option value="false">Đợi tạo hết rồi tải hàng loạt</option>
+          </select></div>
+      </div>
+      <div class="row">
+        <div class="field"><label class="label" for="downloadQualityImage">Chất lượng ảnh</label>
+          <select id="downloadQualityImage">
+            <option value="img_4k">4K</option>
+            <option value="img_2k" selected>2K</option>
+            <option value="img_1k">1K (nhẹ nhất)</option>
+          </select></div>
+        <div class="field"><label class="label" for="subfolderImage">Thư mục con</label>
+          <input type="text" id="subfolderImage" placeholder="Ví dụ: Anh/{date}" maxlength="120"></div>
+      </div>
+      <p class="hint">Thẻ thay thế trong thư mục con: <code>{date}</code>, <code>{time}</code>, <code>{datetime}</code>.</p>
+
+      <div class="sep"></div>
+      <label class="switchline"><input type="checkbox" id="autoRenameImage" checked><span class="sw"></span><span><b>Tự đổi tên file</b> khi tải về</span></label>
+      <div class="row">
+        <div class="field"><label class="label" for="renameModeImage">Kiểu đặt tên</label>
+          <select id="renameModeImage">
+            <option value="default">Theo prompt (STT_nội-dung)</option>
+            <option value="index_only" selected>Chỉ số thứ tự (001, 002, 003…)</option>
+            <option value="custom_list">Theo danh sách riêng</option>
+          </select></div>
+        <div class="field"><label class="label" for="renameMaxLenImage">Số ký tự lấy từ prompt</label>
+          <input type="number" id="renameMaxLenImage" min="0" max="150" value="30"></div>
+        <div class="field"><label class="label" for="renameIndexPadImage">Số chữ số cho STT</label>
+          <input type="number" id="renameIndexPadImage" min="1" max="8" value="3"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label class="label" for="renamePrefixImage">Tiền tố</label>
+          <input type="text" id="renamePrefixImage" placeholder="Canh" maxlength="40"></div>
+        <div class="field"><label class="label" for="renameSuffixImage">Hậu tố</label>
+          <input type="text" id="renameSuffixImage" placeholder="final" maxlength="40"></div>
+        <div class="field"><label class="label" for="renameStartIndexImage">Bắt đầu từ số</label>
+          <input type="number" id="renameStartIndexImage" min="1" value="1"></div>
+      </div>
+      <div class="field hidden" id="renameCustomListWrapImage">
+        <label class="label" for="renameCustomListImage">Danh sách tên riêng (mỗi dòng một tên)</label>
+        <textarea id="renameCustomListImage" rows="5" placeholder="Tên cho prompt 1&#10;Tên cho prompt 2&#10;…"></textarea>
+      </div>
+      <div class="field">
+        <label class="label" for="asciiModeImage">Bỏ dấu tiếng Việt</label>
+        <select id="asciiModeImage">
+          <option value="file">Chỉ ở tên file trên máy (khuyến nghị)</option>
+          <option value="both">Cả tên trên Flow lẫn tên file</option>
+        </select>
+      </div>
+      <div class="hint okbox" id="renamePreviewImage">Tên file sẽ là: —</div>
+    </div>
+
+
+
+    <div class="card">
+      <div class="card-head"><h3>Chẩn đoán giao diện Flow</h3></div>
+      <p class="hint" style="margin-bottom:10px">
+        App đọc giao diện web của Flow để biết bấm vào đâu. Google đổi giao diện là một số bước
+        có thể trượt. Mục này cho biết <b>phần tử nào còn dò được, phần tử nào không</b>.
+      </p>
+      <div class="btnrow">
+        <button class="btn" id="btnUiSelftest">🔬 Kiểm tra 6 phần tử then chốt</button>
+        <button class="btn sm" id="btnUiHealth">📋 Xem tình trạng đã ghi nhận</button>
+        <button class="btn sm danger" id="btnUiClear">✕ Xoá ghi nhận</button>
+      </div>
+      <div id="uiHealthBox" class="hint" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card" id="theCapNhat">
+      <div class="card-head"><h3>🔄 Cập nhật</h3><div class="spacer"></div>
+        <span class="pill" id="capNhatPill">chưa kiểm</span></div>
+      <p class="hint" id="capNhatTrangThai" style="margin-bottom:8px">App tự hỏi GitHub có bản mới không — lần đầu sau khi mở 20 giây, rồi 4 giờ một lần.</p>
+      <div class="capnhat-tien-do" id="capNhatTienDo" hidden><div id="capNhatThanh"></div></div>
+      <div class="btnrow" style="margin:8px 0">
+        <button class="btn sm" id="btnCapNhatKiem">🔎 Kiểm tra ngay</button>
+        <button class="btn sm primary" id="btnCapNhatCai" disabled>⬆ Cài &amp; mở lại</button>
+        <button class="btn sm" id="btnCapNhatTrang">🌐 Trang phát hành</button>
+      </div>
+      <label class="switchline"><input type="checkbox" id="capNhatTuKiem" checked><span class="sw"></span><span>Tự kiểm tra bản mới</span></label>
+      <label class="switchline"><input type="checkbox" id="capNhatTuTai" checked><span class="sw"></span><span>Tự tải bản mới về (chạy ngầm)</span></label>
+      <label class="switchline"><input type="checkbox" id="capNhatTuCai" checked><span class="sw"></span><span>Tự cài khi tôi thoát app</span></label>
+      <details class="hint" id="capNhatGhiChuWrap" hidden style="margin-top:6px"><summary>Có gì mới</summary>
+        <pre id="capNhatGhiChu" style="white-space:pre-wrap;margin:6px 0 0"></pre></details>
+      <p class="hint" style="margin-top:6px">
+        Tài khoản, phiên đăng nhập Google, cài đặt và dự án nằm ở thư mục dữ liệu riêng — cập nhật <b>không</b> đụng tới.
+        Không bao giờ tự cài giữa lúc đang chạy mẻ.
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Sao lưu &amp; thông tin</h3></div>
+      <div class="btnrow" style="margin-bottom:10px">
+        <button class="btn sm" id="btnExportSettings">⬇ Xuất cài đặt</button>
+        <button class="btn sm" id="btnImportSettings">⬆ Nhập cài đặt</button>
+        <button class="btn sm" id="btnOpenData">📁 Mở thư mục dữ liệu</button>
+        <button class="btn sm" id="btnOpenLog">📄 Mở file nhật ký</button>
+      </div>
+      <p class="hint" id="sysInfo">Đang đọc…</p>
+    </div>
+    </div>
+  </section>
+
+  <!-- ─────────── ẢNH → VIDEO ─────────── -->
+  <section class="pane" id="pane-i2v">
+    <div class="card">
+      <div class="card-head"><h3>Ảnh → Video</h3></div>
+      <p class="hint" style="margin-bottom:12px">
+        Chọn một thư mục ảnh đã đánh số, app tải ảnh lên Flow rồi tạo video từ từng ảnh.
+        Ảnh <b>01</b> → video 1, ảnh <b>02</b> → video 2…
+      </p>
+      <div class="field">
+        <label class="label">Thư mục ảnh</label>
+        <div class="row">
+          <input type="text" id="i2vFolder" placeholder="Chưa chọn thư mục" readonly>
+          <button class="btn" id="btnPickImages" style="flex:0 0 auto">📁 Chọn ảnh…</button>
+        </div>
+        <p class="hint" id="i2vFileInfo" style="margin-top:5px">Chưa chọn ảnh nào.</p>
+      </div>
+      <div class="row">
+        <div class="field"><label class="label" for="i2vFrom">Từ ảnh số</label>
+          <input type="number" id="i2vFrom" min="0" value="0"></div>
+        <div class="field"><label class="label" for="i2vTo">Đến ảnh số</label>
+          <input type="number" id="i2vTo" min="0" value="0"></div>
+        <div class="field"><label class="label" for="i2vPad">Số chữ số</label>
+          <input type="number" id="i2vPad" min="1" max="6" value="2"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label class="label" for="i2vNamePrefix">Tiền tố tên ảnh</label>
+          <input type="text" id="i2vNamePrefix" placeholder="vd: anh" maxlength="30"></div>
+        <div class="field"><label class="label" for="i2vNameSuffix">Hậu tố tên ảnh</label>
+          <input type="text" id="i2vNameSuffix" placeholder="vd: _v2" maxlength="30"></div>
+      </div>
+      <div class="field">
+        <label class="label" for="i2vPrompt">Câu lệnh dùng cho mọi ảnh</label>
+        <textarea id="i2vPrompt" rows="3" placeholder="Ví dụ: làm ảnh này chuyển động nhẹ, máy quay lia chậm…"></textarea>
+      </div>
+      <label class="switchline"><input type="checkbox" id="i2vUsePromptList"><span class="sw"></span><span>Dùng danh sách prompt ở tab Chạy thay cho câu lệnh trên</span></label>
+      <label class="switchline"><input type="checkbox" id="i2vStripTag"><span class="sw"></span><span>Xoá thẻ <code>@Tên</code> khỏi câu lệnh gửi Flow</span></label>
+      <div class="btnrow" style="margin-top:10px">
+        <button class="btn" id="btnI2vCheck">🔍 Kiểm tra tên ảnh</button>
+        <button class="btn primary" id="btnI2vUpload">⬆ Tải ảnh lên Flow</button>
+      </div>
+      <p class="hint" id="i2vResult" style="margin-top:9px"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Kho ảnh Flow → sinh prompt video</h3><div class="spacer"></div>
+        <span class="pill" id="flowAssetCount">0 ảnh</span>
+      </div>
+      <p class="hint" style="margin-bottom:12px">
+        Dùng khi ảnh <b>đã nằm sẵn trong kho Flow</b> — vừa tạo bằng chính tool này, hoặc tải lên
+        từ trước. Không cần chọn file: chỉ cần khai mã ảnh, app sinh danh sách prompt
+        <code>&lt;câu lệnh&gt; @&lt;mã ảnh&gt;</code> để Flow tự lấy đúng ảnh ra dựng video.
+      </p>
+      <div class="row">
+        <div class="field"><label class="label" for="faFrom">Từ ảnh số</label>
+          <input type="number" id="faFrom" min="0" value="1"></div>
+        <div class="field"><label class="label" for="faTo">Đến ảnh số</label>
+          <input type="number" id="faTo" min="0" value="10"></div>
+        <div class="field"><label class="label" for="faPad">Số chữ số</label>
+          <input type="number" id="faPad" min="1" max="6" value="2"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label class="label" for="faPrefix">Tiền tố mã ảnh</label>
+          <input type="text" id="faPrefix" placeholder="vd: anh" maxlength="30"></div>
+        <div class="field"><label class="label" for="faSuffix">Hậu tố mã ảnh</label>
+          <input type="text" id="faSuffix" placeholder="vd: _v2" maxlength="30"></div>
+      </div>
+      <div class="field">
+        <label class="label" for="faPrompt">Câu lệnh video dùng cho mọi ảnh</label>
+        <textarea id="faPrompt" rows="2" placeholder="Ví dụ: làm ảnh này chuyển động nhẹ, máy quay lia chậm, giữ nguyên bố cục…"></textarea>
+      </div>
+      <div class="field">
+        <label class="label" for="faTab">Kiểm tra trên tab</label>
+        <select id="faTab" class="mini-select" style="width:100%;max-width:none"></select>
+        <p class="hint" style="margin-top:5px">Mỗi tài khoản có kho ảnh riêng — chọn đúng tab của tài khoản cần dò.</p>
+      </div>
+      <div class="btnrow">
+        <button class="btn" id="btnCheckFlowAssets">🔍 Kiểm tra ảnh trên kho Flow</button>
+        <button class="btn primary" id="btnGenPrompts">✨ Sinh danh sách prompt</button>
+      </div>
+      <p class="hint" id="faResult" style="margin-top:9px"></p>
+    </div>
+  </section>
+
+  <!-- ─────────── TÀI KHOẢN ─────────── -->
+  <section class="pane" id="pane-accounts">
+    <div class="card">
+      <div class="card-head"><h3>Tài khoản Flow</h3><div class="spacer"></div>
+        <button class="btn sm primary" id="btnAddAccount">+ Thêm tài khoản</button>
+      </div>
+      <div class="hint okbox" style="margin-bottom:14px">
+        Mỗi tài khoản có <b>kho cookie riêng biệt</b>, không thấy nhau. Đăng nhập tài khoản này
+        không đá tài khoản kia ra, và nhiều tài khoản <b>chạy cùng lúc</b> được, mỗi tài khoản
+        lại mở được nhiều tab. Tiện ích Chrome không làm được việc này vì nó dùng chung
+        profile Chrome của bạn.
+      </div>
+      <div id="accountList"></div>
+    </div>
+  </section>
+
+  <!-- ─────────── CỬA SỔ FLOW ─────────── -->
+  <section class="pane nopad" id="pane-browser">
+    <div class="tabstrip">
+      <select id="newTabAccount" class="mini-select" title="Mở tab cho tài khoản nào"></select>
+      <button class="btn sm primary" id="btnNewTab">+ Mở tab Flow</button>
+      <button class="btn sm" id="btnReloadTab">⟳ Nạp lại</button>
+      <button class="btn sm" id="btnReinject" title="Gắn lại engine mà không tải lại trang Flow">⚡ Gắn lại engine</button>
+      <button class="btn sm" id="btnDiagnose" title="Xem engine hỏng ở chặng nào">🩺 Chẩn đoán</button>
+      <div id="tabChips" style="display:flex;gap:6px"></div>
+    </div>
+    <div id="browserPane">
+      <div class="empty" id="browserEmpty">
+        <div style="font-size:34px;opacity:.35">◱</div>
+        <div><b>Chưa mở tab Flow nào</b></div>
+        <div class="hint" style="max-width:440px">
+          Chọn tài khoản ở ô bên trái rồi bấm <b>+ Mở tab Flow</b> và đăng nhập Google ngay
+          trong cửa sổ này. Phiên đăng nhập của từng tài khoản được lưu riêng.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── DỰ ÁN ─────────── -->
+  <section class="pane" id="pane-projects">
+    <div class="card">
+      <div class="card-head"><h3>Dự án đã lưu</h3><div class="spacer"></div>
+        <button class="btn sm" id="btnRefreshProjects">⟳ Làm mới</button>
+      </div>
+      <p class="hint" style="margin-bottom:12px">
+        Mỗi lần chạy, engine tự lưu tiến độ thành một dự án. Nạp lại dự án để chạy tiếp
+        chỗ đang dở thay vì làm lại từ đầu.
+      </p>
+      <div class="field">
+        <input type="text" id="projectSearch" placeholder="Tìm theo tên dự án…">
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Tên dự án</th><th style="width:96px">Prompt</th><th style="width:96px">Đã xong</th><th style="width:150px">Lần cuối</th><th style="width:170px">Thao tác</th></tr></thead>
+          <tbody id="projectTable"><tr><td colspan="5" class="empty-row">Chưa có dự án nào</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── NHẬT KÝ ─────────── -->
+  <section class="pane" id="pane-logs">
+    <div class="card" style="margin-bottom:12px">
+      <div class="card-head">
+        <h3>Nhật ký</h3><div class="spacer"></div>
+        <label class="switchline" style="padding:0;margin-right:10px"><input type="checkbox" id="autoScrollLogs" checked><span class="sw"></span><span>Tự cuộn</span></label>
+        <div class="btnrow">
+          <button class="btn sm" id="btnCopyLog">⧉ Chép</button>
+          <button class="btn sm" id="btnSaveLog">⬇ Lưu .txt</button>
+          <button class="btn sm danger" id="btnClearLog">✕ Xoá</button>
+        </div>
+      </div>
+      <div id="logBox"></div>
+    </div>
+  </section>
+
+</div>
+
+
+<!-- ══════════════════ HỘP THOẠI ══════════════════
+     Electron KHÔNG cài đặt window.prompt(): gọi vào là không hiện gì và trả
+     null. Đó chính là lý do nút "Thêm tài khoản" bấm như không có chuyện gì
+     xảy ra. Nên phải tự dựng hộp thoại. -->
+<div id="modalMask" class="modal-mask hidden">
+  <div class="modal">
+    <h3 id="modalTitle">Tiêu đề</h3>
+    <p class="hint" id="modalDesc"></p>
+    <input type="text" id="modalInput" style="margin-top:10px">
+    <div class="btnrow" style="margin-top:14px;justify-content:flex-end">
+      <button class="btn" id="modalCancel">Huỷ</button>
+      <button class="btn primary" id="modalOk">Đồng ý</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

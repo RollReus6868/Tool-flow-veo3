@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Google Flow — hộp chọn model (giả lập)</title>
+<style>
+  body { font-family: system-ui, sans-serif; background:#0b0d13; color:#eee; padding:20px; }
+  .ProseMirror { min-height:60px; border:1px solid #444; border-radius:8px; padding:10px; background:#161a24; }
+  .row { display:flex; gap:8px; align-items:center; margin-top:10px; }
+  button { padding:8px 14px; background:#1d2333; color:#eee; border:1px solid #3a4258; border-radius:8px; }
+  .panel { position:fixed; left:20px; top:260px; width:360px; padding:14px;
+           background:#11151f; border:1px solid #3a4258; border-radius:12px; }
+  .overlay { position:fixed; left:20px; top:40px; width:340px; background:#1a1f2b;
+             border:1px solid #3a4258; border-radius:12px; padding:6px; }
+  .opt { display:flex; gap:10px; padding:10px; border-radius:8px; cursor:pointer; }
+  .opt:hover { background:#2a3040; }
+  .google-symbols { font-style:normal; opacity:.7; }
+  .grid { margin-top:420px; display:flex; gap:10px; }
+  .card { border:1px solid #333; padding:10px; border-radius:8px; }
+</style>
+</head>
+<body>
+<!--
+  Giả lập hộp chọn model của Flow theo ảnh chụp người dùng gửi (09/2026).
+  Hai đời giao diện, chọn bằng window.__fixtureSetUI('mat'|'radix'):
+    mat   — Angular Material: bảng <flow-prompt-box-settings>, hộp model là
+            <button aria-haspopup="listbox">, danh sách <mat-option role="option">
+            nằm trong lớp phủ gắn vào <body> (NGOÀI bảng). Mở/chọn ở CLICK.
+            Chọn xong: đóng danh sách, bảng vẫn mở.
+    radix — Radix: bảng [data-radix-menu-content], hộp model [role="combobox"],
+            danh sách [role="listbox"] > [role="option"]. Mở ở POINTERDOWN,
+            chọn ở POINTERUP. Chọn xong: đóng CẢ bảng (để thử nhánh mở lại
+            bảng mới đọc được model).
+    tron  — như mat nhưng các dòng KHÔNG có role, chỉ là <div> chứa hai <span>
+            ("Veo 3.1 - Lite" + "[Lower Priority]") — thử lưới an toàn và
+            cái bẫy đọc cụt thành tiền tố.
+  Cả ba đều giữ các bẫy thật:
+    • biểu tượng loa là chữ ligature "volume_up" nằm TRONG dòng lựa chọn;
+    • "Veo 3.1 - Lite" là tiền tố của "Veo 3.1 - Lite [Lower Priority]";
+    • thẻ kết quả trong lưới cũng ghi tên model — cấm bấm vào;
+    • hộp model là nút BẬT-TẮT: bấm hai lần là mở rồi đóng.
+-->
+
+<div class="ProseMirror" contenteditable="true" role="textbox" aria-multiline="true"></div>
+<div class="row">
+  <button class="settings-trigger-button" aria-haspopup="menu" id="trigger">Video · 720p · 8s <span>x1</span></button>
+  <button class="generate-icon-button">Tạo</button>
+</div>
+
+<div id="panelHost"></div>
+<div id="overlayHost"></div>
+
+<div class="grid">
+  <div class="card" role="article"><button id="moiNhu">Veo 3.1 - Quality</button> <span>Veo 3.1 - Lite</span></div>
+  <div class="card" role="article"><span>Veo 3.1 - Lite [Lower Priority]</span></div>
+</div>
+
+<script>
+const MODELS = [
+  ['Omni 1.1 Flash', 20],
+  ['Veo 3.1 - Lite', 10],
+  ['Veo 3.1 - Fast', 10],
+  ['Veo 3.1 - Quality', 100],
+  ['Veo 3.1 - Lite [Lower Priority]', 0]
+];
+const THU_TU = MODELS.map((m) => m[0]);
+let UI = 'mat';
+let model = 'Veo 3.1 - Fast';
+let moBang = false, moDs = false;
+window.__soLanBamHop = 0;       // số cú bấm hộp model NHẬN được
+window.__soLanBamMoi = 0;       // số lần ai đó bấm vào thẻ kết quả (phải = 0)
+
+document.getElementById('moiNhu').addEventListener('click', () => { window.__soLanBamMoi++; });
+document.querySelector('.grid').addEventListener('pointerdown', () => { window.__soLanBamMoi++; });
+
+const tinDung = () => (MODELS.find((m) => m[0] === model) || [0, 0])[1];
+
+function dong(t) {
+  if (UI !== 'tron' && t.includes('[')) {
+    const [a, b] = t.split(' [');
+    return `<i class="google-symbols">volume_up</i><span>${a}</span> <span>[${b}</span>`;
+  }
+  if (t.includes('[')) {
+    const [a, b] = t.split(' [');
+    return `<i class="google-symbols">volume_up</i><span>${a}</span> <span>[${b}</span>`;
+  }
+  return `<i class="google-symbols">volume_up</i><span>${t}</span>`;
+}
+
+function ve() {
+  const ph = document.getElementById('panelHost');
+  const oh = document.getElementById('overlayHost');
+  if (!moBang) { ph.innerHTML = ''; oh.innerHTML = ''; return; }
+
+  const hop = UI === 'radix'
+    ? `<div role="combobox" tabindex="0" id="hop" aria-expanded="${moDs}"><span>${model}</span><i class="google-symbols">arrow_drop_down</i></div>`
+    : `<button id="hop" aria-haspopup="listbox"><span>${model}</span><i class="google-symbols">arrow_drop_down</i></button>`;
+  const vo = UI === 'radix'
+    ? `<div class="panel" data-radix-menu-content data-state="open">`
+    : `<flow-prompt-box-settings class="panel">`;
+  const dongVo = UI === 'radix' ? '</div>' : '</flow-prompt-box-settings>';
+  ph.innerHTML = `${vo}
+      <div>${hop}</div>
+      <div class="row"><button>4s</button><button>6s</button><button>8s</button></div>
+      <p style="opacity:.6;font-size:12px">Generating will use ${tinDung()} credits</p>
+    ${dongVo}`;
+
+  if (moDs) {
+    const cac = MODELS.map(([t]) => {
+      if (UI === 'mat')   return `<mat-option role="option" class="opt" data-m="${t}">${dong(t)}</mat-option>`;
+      if (UI === 'radix') return `<div role="option" class="opt" data-m="${t}">${dong(t)}</div>`;
+      return `<div class="opt" data-m="${t}">${dong(t)}</div>`;
+    }).join('');
+    oh.innerHTML = `<div class="overlay ${UI === 'mat' ? 'cdk-overlay-pane' : ''}" ${UI === 'radix' ? 'role="listbox"' : ''}>${cac}</div>`;
+    for (const el of oh.querySelectorAll('[data-m]')) {
+      const chon = () => {
+        model = el.getAttribute('data-m');
+        moDs = false;
+        if (UI === 'radix') moBang = false;      // Radix: đóng CẢ bảng
+        ve();
+      };
+      if (UI === 'radix') el.addEventListener('pointerup', chon);
+      else el.addEventListener('click', chon);
+    }
+  } else {
+    oh.innerHTML = '';
+  }
+
+  const h = document.getElementById('hop');
+  const batTatDs = () => { window.__soLanBamHop++; moDs = !moDs; ve(); };
+  if (UI === 'radix') h.addEventListener('pointerdown', batTatDs);
+  else h.addEventListener('click', batTatDs);
+}
+
+const trigger = document.getElementById('trigger');
+function batTatBang() { moBang = !moBang; if (!moBang) moDs = false; ve(); }
+trigger.addEventListener('pointerdown', () => { if (UI === 'radix') batTatBang(); });
+trigger.addEventListener('click',       () => { if (UI !== 'radix') batTatBang(); });
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (moDs) { moDs = false; ve(); return; }      // Escape đầu: đóng danh sách
+  if (moBang) { moBang = false; ve(); }          // Escape sau: đóng bảng
+}, true);
+
+window.__fixtureSetUI = (u) => {
+  UI = ['mat', 'radix', 'tron'].includes(u) ? u : 'mat';
+  MODELS.sort((a, b) => THU_TU.indexOf(a[0]) - THU_TU.indexOf(b[0]));
+  model = 'Veo 3.1 - Fast'; moBang = false; moDs = false;
+  window.__soLanBamHop = 0; window.__soLanBamMoi = 0;
+  ve();
+  return UI;
+};
+window.__fixtureModel = () => model;
+// Đảo thứ tự danh sách: dòng "Lite [Lower Priority]" đứng TRƯỚC "Lite". Với
+// thứ tự thật của Flow, so kiểu "bắt đầu bằng" vẫn tình cờ chọn đúng vì
+// "Lite" đứng trước — đảo lại thì mới lộ.
+window.__fixtureDaoThuTu = () => { MODELS.reverse(); ve(); return MODELS.map((m) => m[0]); };
+window.__fixtureDatModel = (m) => { model = m; ve(); return model; };
+window.__fixtureMo = () => ({ bang: moBang, ds: moDs });
+ve();
+</script>
+</body>
+</html>

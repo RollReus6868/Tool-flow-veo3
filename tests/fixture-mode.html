@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Google Flow — bảng cài đặt (giả lập)</title>
+<style>
+  body { font-family: system-ui, sans-serif; background:#0b0d13; color:#eee; padding:20px; }
+  .ProseMirror { min-height:70px; border:1px solid #444; border-radius:8px;
+                 padding:10px; background:#161a24; white-space:pre-wrap; outline:none; }
+  .row { display:flex; gap:8px; align-items:center; margin-top:10px; }
+  button { padding:8px 14px; background:#1d2333; color:#eee;
+           border:1px solid #3a4258; border-radius:8px; cursor:pointer; }
+
+  /* ── Bảng cài đặt ──────────────────────────────────────────────────────
+     position:fixed là CÓ CHỦ Ý. Radix dựng bảng thả xuống bằng khối fixed,
+     mà offsetParent của phần tử fixed luôn là null. Bản 2.3.0 dò bằng
+     offsetParent nên sẽ trượt ngay tại đây. Giữ fixed để bài kiểm tra này
+     bắt được đúng cái bẫy đó. */
+  .panel { position:fixed; left:20px; top:220px; width:420px; padding:14px;
+           background:#11151f; border:1px solid #3a4258; border-radius:12px; }
+  .panel[hidden] { display:none; }
+  .tabs { display:flex; gap:6px; }
+  .tabs [role="tab"], mat-button-toggle { display:inline-block; padding:6px 16px;
+           border:1px solid #3a4258; border-radius:8px; background:#1a2030; cursor:pointer; }
+  [aria-selected="true"], .mat-button-toggle-checked { background:#2563eb; border-color:#2563eb; }
+  mat-button-toggle button { border:0; background:transparent; padding:0; color:inherit; }
+</style>
+</head>
+<body>
+
+<h3>Flow giả lập — <span id="uiName"></span></h3>
+
+<div class="ProseMirror" contenteditable="true" role="textbox" aria-multiline="true"></div>
+
+<div class="row">
+  <!-- Nút mở bảng. Chữ trên nút CHÍNH LÀ thứ engine đọc để biết Flow đang ở
+       chế độ nào (pastePrompt: modeBtn.textContent.includes('video')). -->
+  <button class="settings-trigger-button" aria-haspopup="menu" id="trigger">
+    <span id="triggerText">Nano Banana 2 Lite</span> <span>1x</span>
+  </button>
+  <button class="generate-icon-button">Tạo</button>
+</div>
+
+<div id="panelHost"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════
+//  Giả lập hai đời giao diện bảng cài đặt của Flow. Chọn bằng
+//  window.__fixtureSetUI('old'|'new') — KHÔNG dùng ?query hay #hash, vì
+//  Electron từ chối tải lại cùng một file:// chỉ khác phần đó (ERR_FAILED -2).
+//    old -> Radix: [role="tab"][aria-controls$="-content-VIDEO"], mở ở pointerdown
+//    new -> Angular Material: <mat-button-toggle>, mở ở click
+//
+//  HAI CÁI BẪY fixture này cố ý giữ nguyên, vì cả hai đều đã làm hỏng bản thật:
+//    1. Nút mở bảng là nút BẬT-TẮT và mỗi đời nghe một sự kiện khác nhau. Bắn
+//       cả chuỗi sự kiện rồi gọi thêm el.click() là HAI cú bấm trên giao diện
+//       Material — mở rồi đóng ngay (lỗi bản 2.3.1).
+//    2. Bảng là khối position:fixed, nên offsetParent của nó luôn null. Dò
+//       "có nhìn thấy không" bằng offsetParent là trượt dù bảng mở toang
+//       (lỗi bản 2.3.0).
+// ══════════════════════════════════════════════════════════════════════════
+let UI = 'old';
+function veTen() {
+  document.getElementById('uiName').textContent =
+    UI === 'new' ? 'giao diện MỚI (Material)' : 'giao diện CŨ (Radix)';
+}
+
+let mode = 'image';          // trạng thái thật của trang
+let moBang = false;
+window.__soLanMoBang = 0;    // để bài kiểm tra soi xem có mở thừa không
+
+const host = document.getElementById('panelHost');
+
+function veBang() {
+  if (!moBang) { host.innerHTML = ''; return; }
+
+  const chonV = mode === 'video';
+  host.innerHTML = UI === 'new' ? `
+    <flow-prompt-box-settings class="panel">
+      <div class="tabs">
+        <mat-button-toggle class="${chonV ? '' : 'mat-button-toggle-checked'}" data-mode="image">
+          <button type="button"><span class="toggle-text">Image</span></button>
+        </mat-button-toggle>
+        <mat-button-toggle class="${chonV ? 'mat-button-toggle-checked' : ''}" data-mode="video">
+          <button type="button"><span class="toggle-text">Video</span></button>
+        </mat-button-toggle>
+      </div>
+      <div class="tabs" style="margin-top:10px">
+        <mat-button-toggle><button type="button"><span class="toggle-text">16:9</span></button></mat-button-toggle>
+        <mat-button-toggle><button type="button"><span class="toggle-text">9:16</span></button></mat-button-toggle>
+      </div>
+      <div class="tabs" style="margin-top:10px">
+        <mat-button-toggle><button type="button"><span class="toggle-text">x1</span></button></mat-button-toggle>
+        <mat-button-toggle><button type="button"><span class="toggle-text">x2</span></button></mat-button-toggle>
+      </div>
+      <p style="opacity:.6;font-size:12px">Generating will use 0 credits</p>
+    </flow-prompt-box-settings>` : `
+    <div class="panel" data-radix-menu-content data-state="open">
+      <div class="tabs" role="tablist">
+        <div role="tab" data-mode="image" aria-controls="radix-r7-content-IMAGE"
+             aria-selected="${chonV ? 'false' : 'true'}">Image</div>
+        <div role="tab" data-mode="video" aria-controls="radix-r7-content-VIDEO"
+             aria-selected="${chonV ? 'true' : 'false'}">Video</div>
+      </div>
+      <div class="tabs" role="tablist" style="margin-top:10px">
+        <div role="tab" aria-controls="radix-r8-content-LANDSCAPE" aria-selected="true">16:9</div>
+        <div role="tab" aria-controls="radix-r8-content-PORTRAIT" aria-selected="false">9:16</div>
+      </div>
+      <div class="tabs" role="tablist" style="margin-top:10px">
+        <div role="tab" aria-controls="radix-r9-content-1" aria-selected="true">x1</div>
+        <div role="tab" aria-controls="radix-r9-content-2" aria-selected="false">x2</div>
+      </div>
+      <p style="opacity:.6;font-size:12px">Generating will use 0 credits</p>
+    </div>`;
+
+  // Bấm nút chế độ -> đổi trạng thái VÀ ĐÓNG BẢNG, đúng như Flow thật làm.
+  for (const el of host.querySelectorAll('[data-mode]')) {
+    const m = el.getAttribute('data-mode');
+    const dich = el.querySelector('button') || el;
+    dich.addEventListener('click', () => {
+      mode = m;
+      moBang = false;
+      veNut();
+      veBang();
+    });
+  }
+}
+
+function veNut() {
+  // Chữ trên nút đổi theo chế độ — nguồn tin duy nhất engine dùng.
+  document.getElementById('triggerText').textContent =
+    mode === 'video' ? 'Video 720p' : 'Nano Banana 2 Lite';
+}
+
+// ── Nút mở bảng: MỖI ĐỜI GIAO DIỆN NGHE MỘT SỰ KIỆN KHÁC NHAU ────────────
+//   Radix UI          bật/tắt ở  pointerdown  (bỏ qua click tổng hợp)
+//   Angular Material  bật/tắt ở  click        (mat-mdc-menu-trigger)
+// Cả hai đều là nút BẬT-TẮT, nên bấm hai lần = mở rồi đóng. Đây chính là cái
+// bẫy đã làm bản 2.3.1 trượt: nó bắn chuỗi sự kiện RỒI gọi thêm el.click(),
+// thành hai cú bấm trên giao diện Material. Fixture giữ nguyên hành vi thật
+// để bài kiểm tra bắt được, thay vì chiều theo code.
+const trigger = document.getElementById('trigger');
+window.__soLanBamNut = 0;      // đếm số cú bấm bảng NHẬN được, không phải số lần mở
+
+function batTat() {
+  window.__soLanBamNut++;
+  moBang = !moBang;
+  if (moBang) window.__soLanMoBang++;
+  veBang();
+}
+trigger.addEventListener('pointerdown', () => { if (UI === 'old') batTat(); });
+trigger.addEventListener('click',       () => { if (UI === 'new') batTat(); });
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && moBang) { moBang = false; veBang(); }
+});
+
+// ── Cửa sau cho bài kiểm tra ──────────────────────────────────────────────
+window.__fixtureSetUI = (u) => {
+  UI = (u === 'new') ? 'new' : 'old';
+  mode = 'image'; moBang = false; window.__soLanMoBang = 0; window.__soLanBamNut = 0;
+  veTen(); veNut(); veBang();
+  return UI;
+};
+window.__fixtureMode  = () => mode;
+window.__fixtureSet   = (m) => { mode = m; moBang = false; veNut(); veBang(); return mode; };
+window.__fixtureOpen  = () => moBang;
+
+// Hai hàm mà tabs-main.js cần khi fixture này được dùng lại qua TabManager.
+window.__doSpaNav  = () => location.href;
+window.__wipeEngine = () => { delete window.__flowEngineLoaded; return true; };
+
+veTen();
+veNut();
+veBang();
+</script>
+</body>
+</html>

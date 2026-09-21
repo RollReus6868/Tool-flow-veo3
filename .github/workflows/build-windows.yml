@@ -1,0 +1,76 @@
+# ============================================================================
+#  Dong goi file .exe tren may Windows cua GitHub — MIEN PHI
+#  --------------------------------------------------------------------------
+#  Vi sao co file nay: build tren may nha can Node.js, can tai ~350 MB, va hay
+#  bi phan mem diet virus xoa mat file vua tao. GitHub cho muon mot may
+#  Windows sach de lam viec do, khong ton gi.
+#
+#  CACH DUNG
+#    1. Day ma nguon len GitHub (repo cua ban).
+#    2. Vao tab "Actions" cua repo -> chon "Dong goi Windows" ->
+#       bam "Run workflow".
+#    3. Cho khoang 5-10 phut, keo xuong muc "Artifacts" -> tai file .zip ve.
+#       Ben trong co ca ban cai dat lan ban mot file (portable).
+#
+#  Day cung la cach de gui ban moi cho nguoi khac ma khong bat ho build.
+# ============================================================================
+
+name: Dong goi Windows
+
+on:
+  # Bam tay tu tab Actions (chi dong goi, KHONG phat hanh).
+  workflow_dispatch:
+  # phat-hanh.yml goi lai file nay de dong goi truoc khi dang ban moi.
+  # (Truoc 2.8.0 file nay tu chay khi gan the v*; nay viec do do phat-hanh.yml lo,
+  #  de ban Windows va ban Mac cung len MOT ban phat hanh.)
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Lay ma nguon
+        uses: actions/checkout@v4
+
+      - name: Cai Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # npm ci doi co package-lock.json va cai DUNG phien ban da khoa.
+      # Neu repo chua co lock thi lui ve npm install cho khoi dut giua chung.
+      - name: Cai thu vien
+        run: |
+          if (Test-Path package-lock.json) { npm ci --no-audit --no-fund }
+          else { npm install --no-audit --no-fund }
+        shell: pwsh
+
+      # Tang kiem thu nhanh nhat. Chay truoc khi dong goi de khong phat hanh
+      # mot ban da hong san.
+      - name: Kiem thu logic
+        run: npm test
+
+      - name: Dong goi
+        run: npx electron-builder --win --x64 --publish never
+        env:
+          # Khong ky so: khong co chung chi, va khong can cho app tu dung.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Kiem tra da ra file .exe chua
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist -Filter *.exe -ErrorAction SilentlyContinue
+          if (-not $exe) { throw 'Build xong ma khong thay file .exe nao trong dist' }
+          $exe | ForEach-Object { Write-Host ('  ' + $_.Name + '  ' + [math]::Round($_.Length/1MB,1) + ' MB') }
+
+      - name: Dua file len de tai ve
+        uses: actions/upload-artifact@v4
+        with:
+          name: FlowAutomationStudio-windows
+          path: |
+            dist/*.exe
+            dist/*.blockmap
+          if-no-files-found: error
+          retention-days: 30

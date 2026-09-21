@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Giả lập ô nhập prompt của Flow</title>
+<style>
+  body { font-family: system-ui, sans-serif; background:#111; color:#eee; padding:24px; }
+  .ProseMirror {
+    min-height: 120px; max-height: 300px; overflow-y:auto;
+    border: 1px solid #444; border-radius: 8px; padding: 12px;
+    background: #1a1a1a; white-space: pre-wrap; outline: none;
+  }
+  #info { margin-top: 14px; font-size: 13px; color: #9ca3af; }
+</style>
+</head>
+<body>
+
+<h3>Ô nhập giả lập — cắt chữ y như bản thật</h3>
+<div class="ProseMirror" contenteditable="true" role="textbox" aria-multiline="true"></div>
+<div id="info">Đang chờ…</div>
+
+<script>
+// ===========================================================================
+//  Giả lập đúng hành vi gây lỗi của editor Slate/ProseMirror trên Flow:
+//
+//    • Hàm xử lý sự kiện 'paste' CẮT chuỗi xuống còn TRUNCATE_AT ký tự.
+//      Đây chính là đường mà tiện ích Chrome buộc phải đi (ClipboardEvent
+//      tự chế hoặc execCommand('insertText')), nên prompt dài bị cụt.
+//
+//    • Ngược lại, chữ do trình duyệt bơm vào ở tầng dưới (Input.insertText
+//      của CDP — cùng đường bàn phím thật đi) KHÔNG qua hàm này, nên vào đủ.
+//
+//  Nếu bản sửa chạy đúng, test phải cho ra: dán kiểu cũ -> cụt,
+//  bơm kiểu mới -> đủ.
+// ===========================================================================
+const TRUNCATE_AT = 1000;
+const editor = document.querySelector('.ProseMirror');
+
+window.__pasteHandlerHits = 0;
+
+editor.addEventListener('paste', (e) => {
+  e.preventDefault();
+  window.__pasteHandlerHits++;
+  const text = (e.clipboardData && e.clipboardData.getData('text/plain')) || '';
+  const cut = text.slice(0, TRUNCATE_AT);           // ← đây là chỗ cắt
+  document.execCommand('insertText', false, cut);
+  report('paste handler đã chạy, cắt còn ' + cut.length);
+});
+
+// execCommand('insertText') do script ngoài gọi cũng bị chặn giống vậy.
+const origExec = document.execCommand.bind(document);
+let insideOwnPaste = false;
+editor.addEventListener('beforeinput', (e) => {
+  if (e.inputType === 'insertFromPaste') {
+    e.preventDefault();
+    window.__pasteHandlerHits++;
+  }
+});
+
+function report(msg) {
+  document.getElementById('info').textContent =
+    msg + ' — hiện có ' + editor.textContent.length + ' ký tự trong ô';
+}
+
+const obs = new MutationObserver(() => report('nội dung đổi'));
+obs.observe(editor, { childList: true, characterData: true, subtree: true });
+</script>
+</body>
+</html>

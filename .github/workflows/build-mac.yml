@@ -1,0 +1,95 @@
+# ============================================================================
+#  Dong goi ban macOS tren may Mac cua GitHub — MIEN PHI
+#  --------------------------------------------------------------------------
+#  Ra 4 file:
+#    FlowAutomationStudio-<ver>-mac-arm64.dmg / .zip   cho Mac chip Apple (M1…)
+#    FlowAutomationStudio-<ver>-mac-x64.dmg   / .zip   cho Mac chip Intel
+#
+#  CACH DUNG
+#    1. Day ma nguon len GitHub (repo cua ban).
+#    2. Tab "Actions" -> chon "Dong goi macOS" -> bam "Run workflow".
+#    3. Cho 10-15 phut, keo xuong muc "Artifacts" -> tai file .zip ve.
+#
+#  Khac voi ban dung tren Linux: o day co codesign THAT cua Apple, nen buoc
+#  "Kiem chu ky" ben duoi la phep thu that, khong phai uoc doan.
+# ============================================================================
+
+name: Dong goi macOS
+
+on:
+  # Bam tay tu tab Actions (chi dong goi, KHONG phat hanh).
+  workflow_dispatch:
+  # phat-hanh.yml goi lai file nay.
+  workflow_call:
+
+jobs:
+  build:
+    # macos-14 la may chip Apple (arm64). Van dung duoc ban Intel (x64).
+    runs-on: macos-14
+    timeout-minutes: 50
+
+    steps:
+      - name: Lay ma nguon
+        uses: actions/checkout@v4
+
+      - name: Cai Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Cai thu vien
+        run: |
+          if [ -f package-lock.json ]; then npm ci --no-audit --no-fund
+          else npm install --no-audit --no-fund; fi
+
+      - name: Kiem thu logic
+        run: npm test
+
+      # Mo app THAT tren macOS, bam qua tung muc va chup anh. Khong chan phat
+      # hanh neu hong (may cua GitHub doi khi khong co man hinh), nhung anh chup
+      # duoc day len de xem bang mat.
+      - name: Chay thu giao dien tren macOS
+        continue-on-error: true
+        timeout-minutes: 8
+        env:
+          FLOW_SMOKE: '1'
+        run: npx electron .
+
+      - name: Dua anh chup giao dien len
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anh-chup-giao-dien-macos
+          path: shots/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Dong goi
+        run: npx electron-builder --mac --arm64 --x64 --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      # Ban arm64 khong co chu ky hop le thi macOS bao "app bi hong". Kiem that
+      # bang codesign cua Apple truoc khi cho tai ve.
+      - name: Kiem chu ky
+        run: |
+          for app in dist/mac*/"Flow Automation Studio.app"; do
+            echo "== $app"
+            codesign --verify --deep --strict --verbose=2 "$app"
+            codesign -dv "$app" 2>&1 | grep -E 'Signature|Identifier|Format'
+          done
+
+      - name: Kiem tra da ra file .dmg chua
+        run: |
+          ls dist/*.dmg >/dev/null 2>&1 || { echo 'Build xong ma khong thay file .dmg nao trong dist'; exit 1; }
+          ls -lh dist/*.dmg dist/*.zip
+
+      - name: Dua file len de tai ve
+        uses: actions/upload-artifact@v4
+        with:
+          name: FlowAutomationStudio-macos
+          path: |
+            dist/*.dmg
+            dist/*.zip
+          if-no-files-found: error
+          retention-days: 30

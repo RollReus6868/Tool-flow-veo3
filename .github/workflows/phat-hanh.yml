@@ -1,0 +1,98 @@
+# ============================================================================
+#  Phat hanh ban moi — ban be TU CAP NHAT tu day
+#  --------------------------------------------------------------------------
+#  Dong goi ca Windows lan macOS roi dang len MOT ban phat hanh GitHub. App cua
+#  moi nguoi (tu 2.8.0) 4 gio hoi GitHub mot lan, thay ban moi la tu tai va cai.
+#
+#  CACH DUNG (mot lan moi ban moi):
+#    1. Sua "version" trong package.json (vi du 2.8.0 -> 2.8.1).
+#    2. Ghi vai dong "co gi moi" vao GHI_CHU_BAN_MOI.md (hien trong app).
+#    3. Day ma nguon len GitHub.
+#    4. Tab "Actions" -> "Phat hanh ban moi" -> "Run workflow".
+#       (Hoac: git tag v2.8.1 && git push --tags)
+#    5. Cho 15-25 phut. Xong la ban be nhan duoc.
+#
+#  REPO PHAI DE CONG KHAI (public): app hoi GitHub khong kem mat khau nao, nen
+#  repo rieng tu thi ban be khong thay ban phat hanh nao ca.
+# ============================================================================
+
+name: Phat hanh ban moi
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  # Chot chan: the phien ban PHAI trung "version" trong package.json. Lech la
+  # app cua ban be se tuong luc nao cung co ban moi va cai di cai lai mai.
+  kiem:
+    runs-on: ubuntu-latest
+    outputs:
+      the: ${{ steps.v.outputs.the }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER=$(node -p "require('./package.json').version")
+          THE="v$VER"
+          if [ "${{ github.ref_type }}" = "tag" ] && [ "${{ github.ref_name }}" != "$THE" ]; then
+            echo "::error::The ${{ github.ref_name }} khong trung package.json ($VER). Sua mot trong hai cho khop."
+            exit 1
+          fi
+          if gh release view "$THE" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "::error::Ban $THE da phat hanh roi. Tang version trong package.json truoc."
+            exit 1
+          fi
+          echo "the=$THE" >> "$GITHUB_OUTPUT"
+          echo "Se phat hanh $THE"
+
+  windows:
+    needs: kiem
+    uses: ./.github/workflows/build-windows.yml
+
+  mac:
+    needs: kiem
+    uses: ./.github/workflows/build-mac.yml
+
+  dang:
+    needs: [kiem, windows, mac]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lay file da dong goi
+        uses: actions/download-artifact@v4
+        with:
+          path: ra
+          merge-multiple: true
+
+      - name: Kiem du file ma app can
+        run: |
+          VER=$(node -p "require('./package.json').version")
+          for f in "FlowAutomationStudio-$VER-setup.exe" \
+                   "FlowAutomationStudio-$VER-mac-arm64.zip" \
+                   "FlowAutomationStudio-$VER-mac-x64.zip"; do
+            [ -f "ra/$f" ] || { echo "::error::Thieu $f — app tu cap nhat can dung ten nay"; exit 1; }
+          done
+          ls -lh ra
+
+      - name: Dang ban phat hanh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          THE="${{ needs.kiem.outputs.the }}"
+          GHI_CHU=GHI_CHU_BAN_MOI.md
+          [ -f "$GHI_CHU" ] || { echo "Ban $THE" > /tmp/ghichu.md; GHI_CHU=/tmp/ghichu.md; }
+          gh release create "$THE" ra/*.exe ra/*.zip ra/*.dmg \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "Flow Automation Studio $THE" \
+            --notes-file "$GHI_CHU" \
+            --latest

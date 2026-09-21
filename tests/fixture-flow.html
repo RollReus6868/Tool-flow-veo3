@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Google Flow (giả lập)</title>
+<style>
+  body { font-family: system-ui, sans-serif; background:#0b0d13; color:#eee; padding:20px; }
+  .ProseMirror { min-height:90px; border:1px solid #444; border-radius:8px;
+                 padding:10px; background:#161a24; white-space:pre-wrap; outline:none; }
+  button { margin-top:10px; padding:8px 14px; }
+</style>
+</head>
+<body>
+
+<h3 id="man">Màn hình: danh sách dự án</h3>
+
+<!-- Ô nhập prompt, đúng kiểu Slate/ProseMirror như Flow thật -->
+<div class="ProseMirror" contenteditable="true" role="textbox" aria-multiline="true"></div>
+<button class="generate-icon-button">Tạo</button>
+
+<script>
+// Giả lập đúng kiểu chuyển màn hình của Flow: Angular đổi URL bằng pushState,
+// KHÔNG tải lại trang. Đây chính là tình huống làm engine không bám được ở
+// bản đầu, vì 'did-finish-load' không bắn lần nữa.
+window.__doSpaNav = function () {
+  history.pushState({}, '', '/fx/vi/tools/flow/project/abc123');
+  document.getElementById('man').textContent = 'Màn hình: trong dự án (đã chuyển bằng pushState)';
+  return location.href;
+};
+
+// Giả lập tài liệu bị thay mới hoàn toàn: engine biến mất mà không có sự kiện nào.
+window.__wipeEngine = function () {
+  delete window.__flowEngineLoaded;
+  delete window.__flowShimDispatch;
+  delete window.chrome;
+  return true;
+};
+</script>
+</body>
+</html>

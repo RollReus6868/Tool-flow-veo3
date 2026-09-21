@@ -1,0 +1,120 @@
+{
+  "name": "flow-automation-studio",
+  "productName": "Flow Automation Studio",
+  "version": "2.8.0",
+  "description": "Tool desktop tu dong hoa Google Flow - khong gioi han ky tu prompt, chay da tab",
+  "main": "main.js",
+  "author": "RollReus6868",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win --x64",
+    "test": "node tests/run.js && node tests/cap-nhat-test.js",
+    "build:portable": "electron-builder --win portable --x64",
+    "build:mac": "electron-builder --mac --arm64 --x64"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.rollreus.flowstudio",
+    "productName": "Flow Automation Studio",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "src/**/*",
+      "icons/**/*",
+      "package.json"
+    ],
+    "afterPack": "tools/ky-mac.js",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icons/icon.ico"
+    },
+    "portable": {
+      "artifactName": "FlowAutomationStudio-${version}-portable.exe",
+      "unicode": true
+    },
+    "nsis": {
+      "artifactName": "FlowAutomationStudio-${version}-setup.exe",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Flow Automation Studio",
+      "deleteAppDataOnUninstall": false,
+      "unicode": true
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icons/icon.icns",
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "artifactName": "FlowAutomationStudio-${version}-mac-${arch}.${ext}",
+      "extendInfo": {
+        "NSAppleEventsUsageDescription": "Cần quyền này để tắt máy khi chạy xong mẻ — chỉ khi bạn bật tuỳ chọn \"Tắt máy khi chạy xong\"."
+      }
+    },
+    "dmg": {
+      "title": "Flow Automation Studio ${version}",
+      "contents": [
+        {
+          "x": 150,
+          "y": 190,
+          "type": "file"
+        },
+        {
+          "x": 410,
+          "y": 190,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 560,
+        "height": 380
+      }
+    },
+    "compression": "maximum",
+    "artifactName": "${productName}-${version}.${ext}",
+    "publish": null
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RollReus6868/Tool-flow-veo3.git"
+  }
+}
