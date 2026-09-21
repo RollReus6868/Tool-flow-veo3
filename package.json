@@ -1,7 +1,7 @@
 {
   "name": "flow-automation-studio",
   "productName": "Flow Automation Studio",
-  "version": "2.8.0",
+  "version": "2.8.1",
   "description": "Tool desktop tu dong hoa Google Flow - khong gioi han ky tu prompt, chay da tab",
   "main": "main.js",
   "author": "RollReus6868",
