@@ -104,14 +104,15 @@ function kieuCaiDat(o) {
   }
   if (o.platform === 'darwin') {
     // .../Flow Automation Studio.app/Contents/MacOS/Flow Automation Studio
-    const appPath = path.resolve(o.execPath, '..', '..', '..');
+    // Đường dẫn macOS luôn kiểu POSIX, kể cả khi bài kiểm thử chạy trên máy Windows.
+    const appPath = path.posix.resolve(o.execPath, '..', '..', '..');
     if (!/\.app$/i.test(appPath)) return { kieu: 'thu-cong', lyDo: 'Không xác định được vị trí app.' };
     if (/\/AppTranslocation\//.test(appPath)) {
       return { kieu: 'mo-finder', appPath,
         lyDo: 'App đang chạy thẳng từ thư mục Tải về nên macOS khoá nó lại (chỉ đọc). Kéo app vào thư mục Applications rồi mở lại là tự cập nhật được.' };
     }
-    if (!o.ghiDuoc(path.dirname(appPath)) || !o.ghiDuoc(appPath)) {
-      return { kieu: 'mo-finder', appPath, lyDo: `Không có quyền ghi vào ${path.dirname(appPath)}.` };
+    if (!o.ghiDuoc(path.posix.dirname(appPath)) || !o.ghiDuoc(appPath)) {
+      return { kieu: 'mo-finder', appPath, lyDo: `Không có quyền ghi vào ${path.posix.dirname(appPath)}.` };
     }
     return { kieu: 'tu-dong', appPath };
   }
