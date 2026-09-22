@@ -1,4 +1,4 @@
-## Flow Automation Studio 2.8.2
+## Flow Automation Studio 2.8.3
 
 Sửa lỗi treo im lặng sau khi bấm Tạo, và mở đường để bạn tự vá khi Google đổi giao diện Flow.
 
@@ -20,6 +20,7 @@ App báo vỡ giao diện thì mục Chẩn đoán tự sáng đèn và nói lu�
 
 Ai dùng Windows tải -setup.exe, ai dùng Mac tải .dmg đúng chip (Apple Silicon là arm64, Intel là x64)
 
-Với Mac, mở app lần đầu bằng cách nhấp chuột phải → Open, vì app chưa có chứng chỉ Apple. Sau đó nhớ kéo app vào thư mục Applications. Cách cho phép (Cài đặt hệ thống → Quyền riêng tư & Bảo mật → Vẫn mở)
+Với Mac, mở app lần đầu bằng cách nhấp chuột phải → Open, vì app chưa có chứng chỉ Apple. Sau đó nhớ kéo app vào thư mục Applications. Cách cho phép (Cài đặt hệ thống → Quyền riêng tư \& Bảo mật → Vẫn mở)
 
 Lưu ý: Windows nên dùng bản cài đặt (-setup.exe) — bản portable không tự thay được chính nó. Mac nên kéo app vào thư mục Applications.
+
