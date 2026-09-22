@@ -233,4 +233,30 @@ async function typeIntoFocused(wc, text) {
   }
 }
 
-module.exports = { pastePrompt, typeIntoFocused, ensureDebugger, EDITOR_SELECTORS };
+/**
+ * Bấm chuột THẬT (sự kiện có isTrusted = true) tại toạ độ (x, y) tính bằng
+ * CSS px trong khung nhìn của trang — cùng hệ toạ độ getBoundingClientRect().
+ *
+ * Vì sao cần (nhật ký 11:09 → 11:19 ngày 22/09/2026): nút "Start generation"
+ * của Flow bỏ qua mọi cú bấm do JavaScript tạo ra (el.click(), dispatchEvent
+ * pointer/phím — tất cả đều isTrusted = false). Người dùng bấm tay thì ăn
+ * ngay. Kênh debugger của Chromium tạo sự kiện chuột đi đúng đường của chuột
+ * thật, nên Flow nhận — kể cả khi tab đang ẩn (đã thử trong tests/bam-tao-that-main.js).
+ * Đây cũng chính là đường app đã dùng để dán chữ (Input.insertText).
+ */
+async function bamChuotThat(wc, x, y) {
+  if (!ensureDebugger(wc)) return { ok: false, error: 'Không bật được debugger' };
+  const X = Math.round(x), Y = Math.round(y);
+  try {
+    await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: X, y: Y, button: 'none', buttons: 0 });
+    await wait(40 + Math.floor(Math.random() * 60));
+    await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mousePressed', x: X, y: Y, button: 'left', buttons: 1, clickCount: 1 });
+    await wait(50 + Math.floor(Math.random() * 60));
+    await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseReleased', x: X, y: Y, button: 'left', buttons: 0, clickCount: 1 });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+module.exports = { pastePrompt, typeIntoFocused, ensureDebugger, bamChuotThat, EDITOR_SELECTORS };

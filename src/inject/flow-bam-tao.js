@@ -185,7 +185,11 @@
       let ds = [];
       try { ds = document.querySelectorAll(selectorNguoiDung); } catch (_) { ds = []; }
       for (const el of ds) {
-        const b = el.tagName === 'BUTTON' ? el : (el.closest('button') || el);
+        // Người dùng hay chỉ trúng LỚP BỌC (vd. <flow-generate-icon-button>),
+        // mà nút thật nằm BÊN TRONG nó. Tìm xuống trước, rồi mới tìm lên —
+        // bản 2.8.4 chỉ tìm lên (closest) nên bấm vào lớp bọc, không ăn.
+        const b = el.tagName === 'BUTTON' ? el
+          : (el.querySelector('button, [role="button"]') || el.closest('button') || el);
         if (hopLe(b)) return { el: b, via: 'selector-nguoi-dung' };
       }
     }
@@ -300,6 +304,47 @@
       loiTrenTrang: docLoiTrenTrang(),
       coHamBamCuaModeJs: typeof window.__flowBamMotLan === 'function'
     };
+  };
+
+  // ── BẤM CHUỘT THẬT (2.8.5) — chia hai nửa cho tiến trình chính ─────────
+  //  Flow bỏ qua cú bấm do JavaScript tạo ra (isTrusted = false). Tiến trình
+  //  chính bấm chuột thật qua kênh debugger; trang chỉ lo HAI việc:
+  //    __flowBamTaoChuanBi() — tìm nút, cuộn tới, trả toạ độ tâm nút, ghi lại
+  //                            trạng thái TRƯỚC khi bấm.
+  //    __flowBamTaoKiem()    — so với trạng thái trước: đã ăn chưa.
+  let truocBamThat = null;
+
+  window.__flowBamTaoChuanBi = function (tuyChon) {
+    const o = tuyChon || {};
+    const { el, via } = timNut(o.selector || null);
+    if (!el) {
+      return { ok: false, error: 'Không tìm thấy nút Tạo trên trang Flow.', debug: window.__flowBamTaoDebug() };
+    }
+    const truoc = { dai: doDaiChu(timEditor()), the: demTheCho(), daTat: daTat(el) };
+    if (truoc.daTat) {
+      return { ok: false, wasDisabled: true, via, nut: taNut(el), truoc,
+        error: 'Nút Tạo đang bị Flow tắt (disabled) — chưa bấm được.', loiTrenTrang: docLoiTrenTrang() };
+    }
+    try { el.scrollIntoView({ block: 'center', behavior: 'instant' }); } catch (_) {}
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    // Tâm nút có bị lớp khác đè lên không? Bị đè thì chuột thật bấm trúng lớp
+    // đè, không phải nút — nói ra thay vì bấm bừa.
+    let trung = true;
+    try {
+      const o2 = document.elementFromPoint(x, y);
+      trung = !!o2 && (o2 === el || el.contains(o2) || o2.contains(el));
+    } catch (_) {}
+    truocBamThat = { truoc, el, sel: o.selector || null };
+    return { ok: true, x, y, trung, via, nut: taNut(el), truoc,
+      khung: { w: window.innerWidth, h: window.innerHeight } };
+  };
+
+  window.__flowBamTaoKiem = function () {
+    if (!truocBamThat) return { an: false, loi: 'chưa chuẩn bị' };
+    const el = truocBamThat.el.isConnected ? truocBamThat.el : (timNut(truocBamThat.sel).el || truocBamThat.el);
+    const kq = daAn(truocBamThat.truoc, el);
+    return { ...kq, loiTrenTrang: kq.an ? [] : docLoiTrenTrang() };
   };
 
   /**

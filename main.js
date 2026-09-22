@@ -15,7 +15,7 @@ const { exec, spawn, execFile } = require('child_process');
 const { Store } = require('./src/main/store');
 const { TabManager, FLOW_URL } = require('./src/main/tabs');
 const { DownloadManager, SKIP } = require('./src/main/downloads');
-const { pastePrompt, typeIntoFocused, ensureDebugger } = require('./src/main/paste');
+const { pastePrompt, typeIntoFocused, ensureDebugger, bamChuotThat } = require('./src/main/paste');
 const { buildJobs, splitJobs, buildStartMessage, planRun, planRunJobs, buildImageNames,
         buildI2vNames, invalidI2vNames, buildI2vPrompts,
         tenAnhTheoRename, caiDatChuoiVideo } = require('./src/main/jobs');
@@ -801,6 +801,50 @@ async function handleEngineMessage(message, senderWc) {
     case 'INJECT_CLICK_CREATE': {
       if (!tab) return { ok: false, error: 'Không xác định được tab' };
       const sel = (selectorNguoiDung() || {}).createBtn || '';
+      // ── 1. CHUỘT THẬT trước (2.8.5) ──────────────────────────────────
+      //  Nhật ký 11:09 → 11:19 ngày 22/09: cả bốn kiểu bấm bằng JavaScript
+      //  đều không ăn, người dùng bấm tay thì ăn. Flow chỉ nhận sự kiện
+      //  isTrusted. Bấm một lần, chờ tới 5 giây xem Flow nhận chưa — Flow đôi
+      //  khi 3–4 giây mới xoá chữ — rồi mới rơi về các kiểu cũ.
+      try {
+        const cb = await tab.view.webContents.executeJavaScript(
+          `window.__flowBamTaoChuanBi ? window.__flowBamTaoChuanBi(${JSON.stringify({ selector: sel })}) : null`, true);
+        if (cb && cb.wasDisabled) {
+          logToUi('error', `❌ [${tab.id}] ${cb.error}`, tab.id);
+          return cb;
+        }
+        if (cb && cb.ok) {
+          if (!cb.trung) {
+            logToUi('warning', `⚠️ [${tab.id}] Tâm nút Tạo đang bị lớp khác che — vẫn thử bấm chuột thật.`, tab.id);
+          }
+          const b = await bamChuotThat(tab.view.webContents, cb.x, cb.y);
+          if (b.ok) {
+            let kq = null;
+            for (let i = 0; i < 10; i++) {
+              await new Promise((r) => setTimeout(r, 500));
+              kq = await tab.view.webContents.executeJavaScript('window.__flowBamTaoKiem()', true).catch(() => null);
+              if (kq && kq.an) break;
+            }
+            if (kq && kq.an) {
+              logToUi('info', `🖱 [${tab.id}] Nút Tạo ăn ở kiểu bấm "chuột thật" (tìm nút bằng: ${cb.via})`, tab.id);
+              return { ok: true, wasDisabled: false, kieu: 'chuot-that', via: cb.via, nut: cb.nut, truoc: cb.truoc };
+            }
+            logToUi('warning',
+              `⚠️ [${tab.id}] Bấm chuột thật chưa thấy Flow nhận sau 5 giây — thử các kiểu bấm cũ.` +
+              (kq && kq.loiTrenTrang && kq.loiTrenTrang.length ? ` Flow đang báo: "${kq.loiTrenTrang.join('" · "')}"` : ''), tab.id);
+            // Lần cuối: có thể Flow vừa nhận ngay lúc hết giờ. Nhận rồi thì
+            // TUYỆT ĐỐI không bấm thêm (tránh tạo hai lần).
+            const kq2 = await tab.view.webContents.executeJavaScript('window.__flowBamTaoKiem()', true).catch(() => null);
+            if (kq2 && kq2.an) return { ok: true, wasDisabled: false, kieu: 'chuot-that', via: cb.via, nut: cb.nut };
+          } else {
+            logToUi('warning', `⚠️ [${tab.id}] Không bấm chuột thật được (${b.error}) — thử các kiểu bấm cũ.`, tab.id);
+          }
+        }
+      } catch (err) {
+        logToUi('warning', `⚠️ [${tab.id}] Bấm chuột thật lỗi: ${err.message} — thử các kiểu bấm cũ.`, tab.id);
+      }
+
+      // ── 2. Các kiểu bấm bằng JavaScript (đường cũ, dự phòng) ─────────
       try {
         const r = await tab.view.webContents.executeJavaScript(
           `window.__flowBamTao ? window.__flowBamTao(${JSON.stringify({ selector: sel })}) : window.__flowClickCreate()`,
@@ -812,7 +856,7 @@ async function handleEngineMessage(message, senderWc) {
           logToUi('info',
             `🖱 [${tab.id}] Nút Tạo ăn ở kiểu bấm "${r.kieu}" (tìm nút bằng: ${r.via})`, tab.id);
         } else if (r && !r.ok) {
-          logToUi('error', `❌ [${tab.id}] ${r.error || 'Không bấm được nút Tạo'}`, tab.id);
+          logToUi('error', `❌ [${tab.id}] ${r.error || 'Không bấm được nút Tạo'} (kể cả bấm chuột thật)`, tab.id);
           const ds = (r.loiTrenTrang || []).filter(Boolean);
           if (ds.length) {
             logToUi('error', `   ↳ Flow đang báo trên trang: "${ds.join('" · "')}"`, tab.id);

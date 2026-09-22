@@ -1,4 +1,4 @@
-# Flow Automation Studio 2.8.4
+# Flow Automation Studio 2.8.5
 
 Tool desktop tự động hoá Google Flow. Bản chuyển từ tiện ích Chrome
 **Flow Automation Local 1.10.0** sang ứng dụng chạy thẳng trên máy.
@@ -195,6 +195,43 @@ vừa soạn prompt vừa chỉnh cài đặt.
 
 
 ---
+
+## 0o. Bản 2.8.5 — Flow chỉ nhận cú bấm THẬT
+
+**Triệu chứng (nhật ký 11:09 → 11:19 ngày 22/09).** Dán prompt xong, app bấm
+Tạo, thử đủ bốn kiểu (click, chuột, Enter, Space) mà Flow không nhận: chữ vẫn
+nguyên trong ô nhập, không thẻ chờ nào. Người dùng bấm tay vào đúng nút đó thì
+ăn ngay. Thử cả prompt 17 ký tự cũng vậy, nên không phải do prompt dài.
+
+**Nguyên nhân gốc.** Cả bốn kiểu bấm của 2.8.4 đều là sự kiện do JavaScript tạo
+ra, trình duyệt đánh dấu chúng `isTrusted = false`. Nút "Start generation" của
+Flow nay bỏ qua loại sự kiện đó và chỉ nhận cú bấm có `isTrusted = true`, tức là
+đi qua đường nhập liệu thật của trình duyệt. Tôi không biết Google đổi vì cố ý
+hay vì thư viện giao diện của họ đổi; kết quả với app thì như nhau.
+
+Lỗi phụ làm mọi thứ tệ thêm: khi người dùng "Chọn trên trang" cho nút Tạo, cú
+chọn trúng **lớp bọc** `<flow-generate-icon-button>`, còn nút thật nằm bên trong.
+Bản 2.8.4 chỉ tìm *lên* (`closest('button')`) nên bấm vào lớp bọc.
+
+**Sửa.**
+- App bấm bằng **chuột thật** qua kênh điều khiển Chromium
+  (`Input.dispatchMouseEvent`) — cùng kênh app vẫn dùng để dán chữ
+  (`Input.insertText`). Chạy được cả khi tab đang ẩn. Bấm **một** lần, chờ tới
+  5 giây xem Flow đã nhận chưa (Flow đôi khi 3–4 giây mới xoá chữ), rồi mới rơi
+  về các kiểu bấm cũ. Đã nhận thì tuyệt đối không bấm thêm.
+- Selector người dùng chỉ trúng lớp bọc thì app tìm **xuống** nút thật bên trong.
+- Nhật ký ghi rõ `Nút Tạo ăn ở kiểu bấm "chuột thật"` khi thành công.
+
+**Vì sao lần trước không bắt được.** Trang giả lập của `tests/bam-tao-main.js`
+nhận cả sự kiện do JavaScript tạo, nên bài kiểm xanh trong khi Flow thật thì
+không. Nay có `tests/bam-tao-that-main.js`: nút giả **bỏ qua mọi sự kiện
+`isTrusted = false`**, nằm trong lớp bọc như Flow thật, trong một tab đang ẩn.
+Bài này khẳng định đường 2.8.4 *không* ăn và đường 2.8.5 ăn đúng một lần.
+
+**Lưu ý khi đã tự chỉ selector.** Ở mục Chẩn đoán, dòng xanh chỉ có nghĩa
+"selector này khớp *một thứ gì đó*", không có nghĩa khớp *đúng thứ*. Ví dụ
+`span.settings-summary` khớp dòng chữ tóm tắt model chứ không phải thẻ ảnh.
+Chỉ sai thì bấm ✕ đỏ để quay về mặc định.
 
 ## 0n. Bản 2.8.4 — cú bấm Tạo không tới được Flow, và báo cáo chẩn đoán rỗng
 

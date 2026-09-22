@@ -1,0 +1,29 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Flow giả — nút chỉ nhận chuột thật</title></head>
+<body style="margin:0;height:1800px">
+<!-- Mô phỏng nút "Start generation" của Flow (22/09/2026): nằm TRONG lớp bọc
+     <flow-generate-icon-button>, và BỎ QUA mọi sự kiện isTrusted = false. -->
+<div style="height:700px"></div>
+<div class="ProseMirror" contenteditable="true" style="min-height:40px">một con mèo ngồi trên mái nhà</div>
+<flow-generate-icon-button class="mat-mdc-tooltip-trigger">
+  <button id="nut" aria-label="Start generation" class="generate-icon-button" style="width:44px;height:44px">→</button>
+</flow-generate-icon-button>
+<div id="luoi"></div>
+<script>
+  window.__soLanGui = 0; window.__boQua = 0;
+  const cfg = { treMs: 0, tat: false };
+  window.__fixtureDat = (c) => {
+    Object.assign(cfg, c); window.__soLanGui = 0; window.__boQua = 0;
+    document.querySelector('.ProseMirror').innerText = 'một con mèo ngồi trên mái nhà';
+    document.getElementById('luoi').innerHTML = '';
+    const n = document.getElementById('nut'); n.disabled = !!cfg.tat;
+  };
+  function gui() {
+    window.__soLanGui++;
+    setTimeout(() => {   // Flow thật đôi khi vài giây mới xoá chữ
+      document.querySelector('.ProseMirror').innerText = '';
+      document.getElementById('luoi').insertAdjacentHTML('beforeend', '<flow-tile-container>chờ…</flow-tile-container>');
+    }, cfg.treMs);
+  }
+  document.getElementById('nut').addEventListener('click', (e) => { if (!e.isTrusted) { window.__boQua++; return; } gui(); });
+  document.getElementById('nut').addEventListener('keydown', (e) => { if (!e.isTrusted) window.__boQua++; });
+</script></body></html>
