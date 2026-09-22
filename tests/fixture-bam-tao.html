@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<!--
+  fixture-bam-tao.html — dựng lại ĐÚNG cảnh của nhật ký 22/09/2026:
+  bấm nút gửi mà Flow không nhận việc.
+
+  Bốn đời nút, mỗi đời chỉ nghe MỘT loại sự kiện. Đây là chỗ bản cũ chết:
+  __flowClickCreate() chỉ thử React fiber rồi el.click(), nên đời nào không
+  nghe `click` là bấm xong không việc gì xảy ra.
+
+  Fixture ĐẾM số lần submit và bài kiểm khẳng định ĐÚNG BẰNG 1 — bắn cả ba
+  kiểu bấm một lượt thì Flow submit ba lần cho cùng một prompt.
+-->
+<html lang="vi">
+<head><meta charset="utf-8"><title>fixture nút Tạo</title>
+<style>
+  body { font-family: sans-serif; background:#111; color:#eee; margin:0; padding:16px }
+  .khung { border:1px solid #444; border-radius:12px; padding:12px; margin-top:20px }
+  .ProseMirror { min-height:60px; border:1px solid #555; padding:8px; border-radius:8px }
+  button { width:44px; height:44px; border-radius:50%; border:0; background:#fff; cursor:pointer }
+  button[aria-disabled="true"] { opacity:.35 }
+  .an { display:none }
+  #bao { margin-top:12px; color:#fca5a5 }
+  .the { border:1px solid #666; padding:6px; margin-top:6px }
+</style>
+</head>
+<body>
+
+<!-- Thanh tiêu đề: cố ý có mấy nút gây nhiễu giống trang thật (Home, Search…),
+     để bài kiểm chứng được trình dò không bấm nhầm vào chúng. -->
+<button aria-label="Home" class="mdc-icon-button"><i class="google-symbols">home</i></button>
+<button aria-label="Search" class="mdc-icon-button"><i class="google-symbols">search</i></button>
+<button aria-label="Add media menu" class="mdc-icon-button"><i class="google-symbols">add</i></button>
+
+<div class="khung" id="khungNhap">
+  <div class="ProseMirror" contenteditable="true" id="oNhap"></div>
+  <div id="choNut"></div>
+</div>
+
+<div id="luoi"></div>
+<div id="bao" class="an" role="alert"></div>
+
+<script>
+  let soLanSubmit = 0;
+  let doi = 'click';
+
+  const oNhap = document.getElementById('oNhap');
+  const luoi  = document.getElementById('luoi');
+  const bao   = document.getElementById('bao');
+
+  function submit() {
+    soLanSubmit++;
+    // Flow thật làm hai việc: xoá chữ trong ô nhập và thêm một thẻ chờ.
+    oNhap.innerText = '';
+    const t = document.createElement('flow-pending-tile');
+    t.className = 'the';
+    t.textContent = 'đang tạo…';
+    luoi.appendChild(t);
+  }
+
+  function dungNut() {
+    document.getElementById('choNut').innerHTML = '';
+    const b = document.createElement('button');
+    b.setAttribute('aria-label', 'Start generation');
+    b.className = 'mdc-icon-button mat-mdc-icon-button generate-icon-button';
+    b.innerHTML = '<i class="google-symbols">arrow_forward</i>';
+
+    if (doi === 'click')      b.addEventListener('click', submit);
+    if (doi === 'pointer')    b.addEventListener('pointerdown', submit);
+    if (doi === 'phim')       b.addEventListener('keydown', (e) => {
+                                if (e.key === 'Enter' || e.key === ' ') submit();
+                              });
+    if (doi === 'chet')       { /* không nghe gì cả — Flow từ chối trong im lặng */ }
+    if (doi === 'tat')        b.setAttribute('aria-disabled', 'true');
+
+    document.getElementById('choNut').appendChild(b);
+    return b;
+  }
+
+  // Một nút GÂY NHIỄU mang đúng class mà hàm bấm cũ tìm đầu tiên, nhưng nằm
+  // ngoài khung nhập và không nghe gì. Đây là cách dựng lại cảnh "người dùng
+  // chỉ đúng nút mà app vẫn bấm chỗ khác": nếu trình dò không ưu tiên selector
+  // người dùng chỉ, nó sẽ bấm vào cái này và chẳng có gì xảy ra.
+  function dungNutGayNhieu(bat) {
+    const cu = document.getElementById('nutNhieu');
+    if (cu) cu.remove();
+    if (!bat) return;
+    const b = document.createElement('button');
+    b.id = 'nutNhieu';
+    b.className = 'mdc-icon-button generate-icon-button';
+    b.setAttribute('data-nhieu', '1');
+    b.innerHTML = '<i class="google-symbols">arrow_forward</i>';
+    document.body.insertBefore(b, document.getElementById('khungNhap'));
+  }
+
+  window.__fixtureDat = function (cfg) {
+    doi = cfg.doi || 'click';
+    soLanSubmit = 0;
+    luoi.innerHTML = '';
+    oNhap.innerText = cfg.chu === undefined ? 'xin chao day la mot prompt dai' : cfg.chu;
+    bao.className = cfg.loi ? '' : 'an';
+    bao.textContent = cfg.loi || '';
+    dungNutGayNhieu(!!cfg.nutNhieu);
+    dungNut();
+    return true;
+  };
+
+  window.__fixtureSoLanSubmit = () => soLanSubmit;
+  window.__fixtureSoThe = () => luoi.children.length;
+</script>
+</body>
+</html>

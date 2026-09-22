@@ -27,6 +27,62 @@ const APP_VERSION = require('./package.json').version;
 
 const { AccountManager } = require('./src/main/accounts');
 
+// ============================================================================
+//  THƯ MỤC DỮ LIỆU: "Tool-flow-veo3" thay cho "Flow Automation Studio"
+//  --------------------------------------------------------------------------
+//  Electron mặc định đặt thư mục dữ liệu theo productName, nên nó tên là
+//  "Flow Automation Studio" — khác tên dự án và khác tên thư mục trên máy
+//  người dùng, mỗi lần đi tìm là phải nhớ hai tên.
+//
+//  PHẢI CHẠY TRƯỚC app.whenReady() và trước mọi chỗ đọc getPath('userData'):
+//  đặt muộn hơn là Chromium đã mở kho ở đường cũ, đổi giữa đường thì hai nơi
+//  cùng bị ghi.
+//
+//  CHUYỂN DỮ LIỆU CŨ SANG, KHÔNG ĐƯỢC LÀM MẤT. Trong thư mục đó có phiên đăng
+//  nhập Google của từng tài khoản (Partitions/persist:flow-*), cài đặt và toàn
+//  bộ dự án. Đổi tên mà không mang theo là người dùng phải đăng nhập lại tất
+//  cả. Ba nước, nhường nhau: đổi tên → chép → nếu cả hai hỏng thì DÙNG LẠI
+//  ĐƯỜNG CŨ (thà tên thư mục chưa đổi còn hơn mất phiên đăng nhập).
+// ============================================================================
+const TEN_THU_MUC_DU_LIEU = 'Tool-flow-veo3';
+const TEN_THU_MUC_CU = 'Flow Automation Studio';
+let ghiChuThuMuc = '';
+
+(function datThuMucDuLieu() {
+  try {
+    const goc = app.getPath('appData');
+    const moi = path.join(goc, TEN_THU_MUC_DU_LIEU);
+    const cu  = path.join(goc, TEN_THU_MUC_CU);
+
+    const coMoi = fs.existsSync(moi);
+    const coCu  = fs.existsSync(cu);
+
+    if (!coMoi && coCu) {
+      try {
+        fs.renameSync(cu, moi);
+        ghiChuThuMuc = `đã chuyển dữ liệu từ "${TEN_THU_MUC_CU}" sang "${TEN_THU_MUC_DU_LIEU}"`;
+      } catch (errDoiTen) {
+        try {
+          fs.cpSync(cu, moi, { recursive: true });
+          ghiChuThuMuc = `đã CHÉP dữ liệu sang "${TEN_THU_MUC_DU_LIEU}" ` +
+            `(thư mục cũ vẫn còn, xoá tay được sau khi thấy app chạy đúng)`;
+        } catch (errChep) {
+          // Không mang được dữ liệu sang thì ở lại đường cũ.
+          app.setPath('userData', cu);
+          ghiChuThuMuc = `KHÔNG chuyển được dữ liệu sang "${TEN_THU_MUC_DU_LIEU}" ` +
+            `(${errChep.message}) — vẫn dùng thư mục cũ để không mất phiên đăng nhập`;
+          return;
+        }
+      }
+    }
+
+    fs.mkdirSync(moi, { recursive: true });
+    app.setPath('userData', moi);
+  } catch (err) {
+    ghiChuThuMuc = `không đặt được thư mục dữ liệu mới (${err.message}) — dùng mặc định`;
+  }
+})();
+
 let mainWindow = null;
 let tabManager = null;
 let downloadManager = null;
@@ -633,6 +689,26 @@ function sendUi(channel, payload) {
 //  Tên các action giữ nguyên để engine không phải sửa một dòng nào.
 // ============================================================================
 
+// ── Selector người dùng tự chỉ, dùng ở tiến trình chính ────────────────────
+//  Engine đọc settings.selectors qua bộ cài đặt gửi kèm mỗi mẻ. Nhưng mấy
+//  trình tiêm riêng (bấm nút Tạo, đổi chế độ…) chạy ngoài engine nên phải tự
+//  lấy. Đọc từ kho một lần rồi giữ lại; hai chỗ ghi (lưu cài đặt và nút "Chọn
+//  trên trang") gọi datSelectorNguoiDung() để làm mới.
+let _selectorCache = null;
+
+function selectorNguoiDung() {
+  if (_selectorCache) return _selectorCache;
+  try {
+    const { veoSettings } = store.get('veoSettings');
+    _selectorCache = (veoSettings && veoSettings.selectors) || {};
+  } catch (_) { _selectorCache = {}; }
+  return _selectorCache;
+}
+
+function datSelectorNguoiDung(s) {
+  _selectorCache = s && typeof s === 'object' ? s : {};
+}
+
 async function handleEngineMessage(message, senderWc) {
   const action = message && message.action;
   const tab = tabManager.findByWcId(senderWc.id);
@@ -710,10 +786,46 @@ async function handleEngineMessage(message, senderWc) {
       return { ok: result.ok, hasZeroWidth: !result.ok, error: result.error, ...result };
     }
 
+    // ── BẤM NÚT TẠO ────────────────────────────────────────────────────
+    //  Đi qua src/inject/flow-bam-tao.js, KHÔNG gọi __flowClickCreate() trực
+    //  tiếp nữa. Hai lý do, cả hai đọc từ nhật ký 22/09/2026 (README mục 0n):
+    //
+    //   • __flowClickCreate() dò nút bằng bộ selector CỨNG của riêng nó và
+    //     không hề đọc selector người dùng tự chỉ. Người dùng đã chỉ đúng
+    //     button[aria-label="Start generation"] mà app vẫn bấm chỗ khác.
+    //   • Nó chỉ thử đúng một kiểu bấm. Trình mới thử lần lượt chuột / click
+    //     / bàn phím, xác nhận giữa mỗi lần và dừng ngay khi thấy ăn.
+    //
+    //  Vẫn giữ hàm cũ làm đường dự phòng: nếu file tiêm mới vì lý do gì không
+    //  có mặt thì hành vi trở về đúng như bản trước, chứ không chết hẳn.
     case 'INJECT_CLICK_CREATE': {
       if (!tab) return { ok: false, error: 'Không xác định được tab' };
+      const sel = (selectorNguoiDung() || {}).createBtn || '';
       try {
-        const r = await tab.view.webContents.executeJavaScript('window.__flowClickCreate()', true);
+        const r = await tab.view.webContents.executeJavaScript(
+          `window.__flowBamTao ? window.__flowBamTao(${JSON.stringify({ selector: sel })}) : window.__flowClickCreate()`,
+          true
+        );
+        // Nói ra kiểu bấm nào ăn: lần sau đọc nhật ký là biết ngay Flow đang
+        // nghe sự kiện gì, khỏi phải đoán lại từ đầu.
+        if (r && r.ok && r.kieu) {
+          logToUi('info',
+            `🖱 [${tab.id}] Nút Tạo ăn ở kiểu bấm "${r.kieu}" (tìm nút bằng: ${r.via})`, tab.id);
+        } else if (r && !r.ok) {
+          logToUi('error', `❌ [${tab.id}] ${r.error || 'Không bấm được nút Tạo'}`, tab.id);
+          const ds = (r.loiTrenTrang || []).filter(Boolean);
+          if (ds.length) {
+            logToUi('error', `   ↳ Flow đang báo trên trang: "${ds.join('" · "')}"`, tab.id);
+          }
+          if (r.nut) {
+            logToUi('info',
+              `   ↳ Nút app đang bấm: <${r.nut.tag}> aria-label="${r.nut.aria}" class="${r.nut.cls}"`, tab.id);
+          }
+          if (r.truoc) {
+            logToUi('info',
+              `   ↳ Trước khi bấm: ${r.truoc.dai} ký tự trong ô nhập, ${r.truoc.the} thẻ trên trang.`, tab.id);
+          }
+        }
         return r;
       } catch (err) {
         return { ok: false, error: err.message };
@@ -1070,8 +1182,23 @@ function registerIpc() {
     return tabManager.dispatch(tab.id, message);
   };
 
-  ipcMain.handle('app:eng:ui-selftest', () => guiChoTabDangMo({ action: 'RUN_UI_SELFTEST' }));
-  ipcMain.handle('app:eng:ui-health',   () => guiChoTabDangMo({ action: 'GET_UI_HEALTH' }));
+  // ── Mở phong bì của chrome-shim ────────────────────────────────────────
+  //  __flowShimDispatch trả về { ok, result } — `result` là thứ engine đưa
+  //  vào sendResponse. Ai đọc mà quên mở một lớp này thì thấy `{ok:true}`
+  //  rỗng không và tưởng engine không trả lời (xem README mục 0n).
+  const moPhongBi = (r) => {
+    if (!r || typeof r !== 'object') return r;
+    if (r.result !== undefined && r.result !== null) {
+      // Giữ lại lỗi bọc ngoài (ví dụ hết giờ chờ) nếu có.
+      return r.ok === false && r.error ? { ...r.result, loiVo: r.error } : r.result;
+    }
+    return r;
+  };
+
+  ipcMain.handle('app:eng:ui-selftest', async () =>
+    moPhongBi(await guiChoTabDangMo({ action: 'RUN_UI_SELFTEST' })));
+  ipcMain.handle('app:eng:ui-health',   async () =>
+    moPhongBi(await guiChoTabDangMo({ action: 'GET_UI_HEALTH' })));
   ipcMain.handle('app:eng:ui-clear',    () => guiChoTabDangMo({ action: 'CLEAR_UI_HEALTH' }));
 
   // ══════════════════════════════════════════════════════════════════════
@@ -1096,6 +1223,9 @@ function registerIpc() {
   // dụng ngay trong mẻ đang chạy chứ không phải chờ lần Bắt đầu sau.
   // Engine đọc UPDATE_SETTINGS bằng { ...state.settings, ...message.data }.
   ipcMain.handle('app:eng:selectors-push', async (_e, selectors) => {
+    // Làm mới bộ nhớ đệm NGAY, trước cả khi đẩy xuống tab: trình bấm nút Tạo
+    // chạy ở tiến trình chính và phải thấy selector vừa chỉ ở prompt kế tiếp.
+    datSelectorNguoiDung(selectors);
     const ds = tabManager.tabs.filter((t) => t.ready);
     if (!ds.length) return { ok: false, error: 'Chưa có tab Flow nào sẵn sàng' };
     for (const t of ds) {
@@ -1115,8 +1245,23 @@ function registerIpc() {
   //   • bản engine TỰ CHỤP đúng lúc nó trượt (veoUiDiagnostics trong kho dữ
   //     liệu) — quý hơn, vì nó chụp trang ở đúng thời điểm hỏng.
   ipcMain.handle('app:eng:ui-report', async () => {
-    const tuKiem = await guiChoTabDangMo({ action: 'RUN_UI_SELFTEST' });
+    const tuKiem = moPhongBi(await guiChoTabDangMo({ action: 'RUN_UI_SELFTEST' }));
     const { veoUiDiagnostics } = store.get('veoUiDiagnostics');
+
+    // Kiểm kê DOM và trạng thái nút Tạo — hai thứ báo cáo lần trước THIẾU, mà
+    // thiếu chúng thì không trả lời được câu "vì sao bấm Tạo không ăn".
+    let kiemKe = null, nutTao = null;
+    const tabDoc = tabManager.find(tabManager.activeId) || tabManager.tabs.find((t) => t.ready);
+    if (tabDoc && tabDoc.ready) {
+      try {
+        kiemKe = await tabDoc.view.webContents.executeJavaScript(
+          'window.__flowKiemKeDOM ? window.__flowKiemKeDOM() : null', true);
+      } catch (err) { kiemKe = { loi: err.message }; }
+      try {
+        nutTao = await tabDoc.view.webContents.executeJavaScript(
+          'window.__flowBamTaoDebug ? window.__flowBamTaoDebug() : null', true);
+      } catch (err) { nutTao = { loi: err.message }; }
+    }
 
     const chu = [
       '════════ BÁO CÁO CHẨN ĐOÁN GIAO DIỆN FLOW ════════',
@@ -1134,6 +1279,22 @@ function registerIpc() {
       (veoUiDiagnostics && Object.keys(veoUiDiagnostics).length)
         ? JSON.stringify(veoUiDiagnostics, null, 2)
         : '(chưa có bản chụp nào — hoặc đã bị nút "Xoá ghi nhận" dọn mất)',
+      '',
+      '──────── 3. KIỂM KÊ DOM TRANG FLOW ────────',
+      'Tên các thẻ tự đặt đang có trên trang (flow-*, mat-*) và số chỗ còn khớp',
+      'với từng selector engine dùng để dò thẻ kết quả. Đây là chỗ nhìn ra',
+      'Google đã đổi tên thẻ nào, kể cả khi lưới đang trống.',
+      '',
+      kiemKe ? JSON.stringify(kiemKe, null, 2) : '(chưa mở tab Flow nào sẵn sàng)',
+      '',
+      '──────── 4. NÚT TẠO / GỬI ────────',
+      'Nút app đang định bấm, tìm ra bằng đường nào, và chữ Flow đang báo lỗi',
+      'trên trang (nếu có).',
+      '',
+      nutTao ? JSON.stringify(nutTao, null, 2) : '(chưa mở tab Flow nào sẵn sàng)',
+      '',
+      '──────── 5. SELECTOR NGƯỜI DÙNG TỰ CHỈ ────────',
+      JSON.stringify(selectorNguoiDung(), null, 2),
       ''
     ].join('\n');
 
@@ -1153,11 +1314,13 @@ function registerIpc() {
   //   handleUploadImages(payload)    đọc  payload.images  -> [{dataUrl,name,type}]
   // Gửi sai tên trường là engine trả "Không có ảnh nào được gửi tới" — đúng
   // kiểu lỗi đã từng làm nút Bắt đầu im lặng không làm gì.
-  ipcMain.handle('app:eng:check-assets', (_e, data) =>
-    guiChoTabDangMo({
+  // CHECK_ASSET_NAMES trả lời KHÔNG ĐỒNG BỘ trong engine (`return true`), nên
+  // phải mở phong bì của shim — xem moPhongBi() ở trên.
+  ipcMain.handle('app:eng:check-assets', async (_e, data) =>
+    moPhongBi(await guiChoTabDangMo({
       action: 'CHECK_ASSET_NAMES',
       data: { names: buildImageNames(data), settings: data.settings || {} }
-    }));
+    })));
 
   /**
    * Dò xem những mã ảnh này đã có trong kho Flow chưa — dò trên ĐÚNG tab chỉ
@@ -1223,7 +1386,9 @@ function registerIpc() {
     // cho người dùng bằng đúng các bước cần bấm, thay vì để họ tự đoán.
     const loi = r && (r.error || (r.result && r.result.error));
     if (loi) logToUi('error', `❌ ${loi}`);
-    return r;
+    // UPLOAD_IMAGES_TO_FLOW cũng trả lời không đồng bộ — mở phong bì để giao
+    // diện đọc được ok/uploaded thật thay vì cái vỏ { ok:true } rỗng.
+    return moPhongBi(r);
   });
   ipcMain.handle('app:tabs:close',    (_e, id)    => { tabManager.close(id); return tabManager.list(); });
   ipcMain.handle('app:tabs:activate', (_e, id)    => { tabManager.setActive(id); return tabManager.list(); });
@@ -1508,6 +1673,7 @@ function registerIpc() {
   ipcMain.handle('app:settings:get',  ()        => store.get(['veoSettings', 'veoProjects']));
   ipcMain.handle('app:settings:save', (_e, data) => {
     store.set({ veoSettings: data });
+    datSelectorNguoiDung(data && data.selectors);
     if (data && data.downloadDir) downloadManager.setDownloadRoot(data.downloadDir);
     return true;
   });
@@ -1738,6 +1904,9 @@ app.whenReady().then(async () => {
 
   logToUi('success', `🚀 Flow Automation Studio ${APP_VERSION} đã khởi động`);
   logToUi('info', `📁 Dữ liệu: ${userData}`);
+  // Nói ra chuyện đổi tên thư mục: lần đầu mở bản 2.8.4 người dùng cần biết
+  // phiên đăng nhập và dự án đã đi theo, chứ không phải mất.
+  if (ghiChuThuMuc) logToUi('info', `📦 Thư mục dữ liệu: ${ghiChuThuMuc}`);
 
   // Chạy thử đường model từ đầu tới cuối trên trang giả lập: chỉ bật khi đặt
   // FLOW_E2E_MODEL=1. Cần chạm vào hàm bên trong nên đưa thẳng cho bài thử.

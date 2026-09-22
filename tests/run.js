@@ -1139,6 +1139,24 @@ test('model: nối dây trong main.js đủ các chỗ', () => {
   assert.ok(/if \(tab\.busy\) return \{ ok: false/.test(lay("'app:tabs:listModels'")), 'đọc model lúc tab đang chạy');
 });
 
+test('tab ẩn KHÔNG bị thu về 0×0 (lưới ảo của Flow sẽ vẽ 0 thẻ)', () => {
+  // KHÔI PHỤC ở 2.8.4: bài kiểm này và bản vá nó canh đã bị GÓI ZIP 2.8.2
+  // ghi đè mất (xem README mục 0n, phần "gói zip ghi đè bản vá mới hơn").
+  // Lưới kết quả mới của Flow là cdk-virtual-scroll-viewport: chỉ vẽ số thẻ
+  // vừa khung nhìn. Tab ẩn bị thu về 0×0 thì lưới vẽ 0 thẻ, và mọi tab báo
+  // "KHÔNG TÌM THẤY Thẻ video / ảnh".
+  const { khungChoTab } = require('../src/main/tabs.js');
+  const z = { x: 0, y: 0, width: 0, height: 0 };
+  const k1 = khungChoTab(z, null);
+  assert.ok(k1.width >= 400 && k1.height >= 300, 'chưa có vùng hiển thị vẫn phải có khung thật');
+  assert.deepStrictEqual(khungChoTab({ x: 300, y: 60, width: 1000, height: 700 }, null), { x: 300, y: 60, width: 1000, height: 700 });
+  const cuoi = { x: 300, y: 60, width: 1000, height: 700 };
+  assert.deepStrictEqual(khungChoTab(z, cuoi), cuoi, 'vùng hiển thị bị ẩn thì giữ khung đẹp gần nhất');
+  const t = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'tabs.js'), 'utf8');
+  const ab = t.slice(t.indexOf('  applyBounds() {'), t.indexOf('  async reload('));
+  assert.ok(!/width:\s*0/.test(ab), 'applyBounds lại đặt khung 0×0 cho tab');
+});
+
 test('model: tiêm flow-model.js SAU flow-mode.js', () => {
   const t = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'tabs.js'), 'utf8');
   const a = t.indexOf("['trình đổi chế độ'"), b = t.indexOf("['trình chọn model'");
@@ -1393,6 +1411,110 @@ test('đường tự chỉ selector nối đủ: nút → engine → settings.se
     'collectSettings() không gửi selectors — engine sẽ không bao giờ thấy selector bạn chỉ');
   assert.ok(/s\.selectors\s*=/.test(khoi('collectForSave')),
     'collectForSave() không lưu selectors — mở lại app là mất hết');
+});
+
+// ── Trả lời KHÔNG ĐỒNG BỘ của engine phải về được tới nơi ─────────────────
+//
+//  BẰNG CHỨNG THẬT: báo cáo chẩn đoán 10:13 ngày 22/09/2026, chỗ đáng lẽ là
+//  bảng 6 phần tử kèm outerHTML, chỉ có đúng:
+//      ──── 1. TỰ KIỂM NGAY LÚC XUẤT BÁO CÁO ────
+//      { "ok": true }
+//
+//  chrome-shim cũ chạy đồng bộ nên mọi sendResponse gọi sau đều mất. Engine
+//  có ĐÚNG BA chỗ trả lời kiểu đó, và cả ba đều là tính năng người dùng bấm:
+//  tự kiểm giao diện, tải ảnh lên Flow, kiểm tên ảnh.
+//
+//  Bài này canh hai đầu: shim có CHỜ, và main.js có MỞ PHONG BÌ.
+//  (Đường đầu-cuối thật nằm ở tầng 4 — tests/tabs-main.js, bài 3b2.)
+test('shim chờ sendResponse gọi sau, và main.js mở phong bì', () => {
+  const shim = fs.readFileSync(path.join(GOC, 'src', 'inject', 'chrome-shim.js'), 'utf8');
+  const m = fs.readFileSync(path.join(GOC, 'main.js'), 'utf8');
+  const e = fs.readFileSync(path.join(GOC, 'src', 'inject', 'flow-engine.js'), 'utf8');
+
+  // Engine vẫn còn dùng kiểu trả lời sau chứ? Nếu Google/engine đổi thì phải biết.
+  const soChoTraSau = (e.match(/return true;\s*\/\/ trả lời không đồng bộ|sendResponse\);\s*\n\s*return true;/g) || []).length;
+  assert.ok(/return true;/.test(e) && soChoTraSau >= 1,
+    'engine không còn chỗ nào trả lời không đồng bộ — xem lại bài kiểm này');
+
+  assert.ok(/=== true\)\s*choKhongDongBo = true/.test(shim),
+    'chrome-shim không còn nhận biết người nghe trả về true → mọi trả lời sau sẽ mất');
+  assert.ok(/new Promise\(/.test(shim),
+    'chrome-shim không trả về Promise → không thể chờ sendResponse gọi sau');
+  assert.ok(/setTimeout\(\(\) => tra\(true\)/.test(shim),
+    'thiếu trần thời gian chờ — một người nghe hỏng là treo cả app');
+
+  assert.ok(/const moPhongBi =/.test(m), 'main.js thiếu moPhongBi()');
+  // Ba lệnh trả lời không đồng bộ đều phải đi qua moPhongBi.
+  for (const [ten, re] of [
+    ['RUN_UI_SELFTEST',       /moPhongBi\(await guiChoTabDangMo\(\{ action: 'RUN_UI_SELFTEST' \}\)\)/],
+    ['CHECK_ASSET_NAMES',     /moPhongBi\(await guiChoTabDangMo\(\{\s*\n?\s*action: 'CHECK_ASSET_NAMES'/],
+    ['UPLOAD_IMAGES_TO_FLOW', /return moPhongBi\(r\);/]
+  ]) {
+    assert.ok(re.test(m), `${ten} chưa mở phong bì của shim — giao diện sẽ nhận { ok:true } rỗng`);
+  }
+});
+
+// ── Bấm nút Tạo: đi qua trình mới, và KHÔNG submit hai lần ────────────────
+//
+//  Nhật ký 22/09/2026: "🖱️ Create clicked (wasDisabled: false)" rồi
+//  "newTile=false, txtCleared=false(len=21804), newImg=false" — bấm mà Flow
+//  không nhận. Hai chỗ hở: hàm bấm cũ không đọc selector người dùng tự chỉ,
+//  và chỉ thử đúng một kiểu bấm.
+test('lệnh bấm Tạo đi qua flow-bam-tao.js kèm selector người dùng', () => {
+  const m = fs.readFileSync(path.join(GOC, 'main.js'), 'utf8');
+  const t = fs.readFileSync(path.join(GOC, 'src', 'main', 'tabs.js'), 'utf8');
+  // Bỏ dòng ghi chú trước khi soi: chính ghi chú trong file cũng NHẮC TỚI
+  // đoạn code sai (để giải thích vì sao không được dùng), nên soi cả ghi chú
+  // là bài kiểm đỏ oan. Đây là lỗi tôi mắc ngay khi viết bài kiểm này.
+  const boGhiChu = (x) => x.split('\n').filter((d) => !/^\s*\/\//.test(d)).join('\n');
+  const b = boGhiChu(fs.readFileSync(path.join(GOC, 'src', 'inject', 'flow-bam-tao.js'), 'utf8'));
+
+  // File tiêm phải được nạp VÀ có trong chuỗi tiêm, nếu không __flowBamTao
+  // không tồn tại trên trang và app lặng lẽ rơi về hàm cũ.
+  assert.ok(/flow-bam-tao\.js/.test(t), 'tabs.js không đọc flow-bam-tao.js');
+  assert.ok(/bamTaoSource/.test(t) && /\['trình bấm nút Tạo', this\.bamTaoSource\]/.test(t),
+    'flow-bam-tao.js chưa có trong chuỗi tiêm');
+  // Phải tiêm SAU flow-mode.js: nó dùng lại __flowBamMotLan / __flowNhinThay.
+  assert.ok(t.indexOf("this.modeSource") < t.indexOf("this.bamTaoSource]"),
+    'flow-bam-tao.js phải tiêm SAU trình đổi chế độ');
+
+  assert.ok(/window\.__flowBamTao/.test(m), 'main.js không gọi __flowBamTao');
+  assert.ok(/selectorNguoiDung\(\) \|\| \{\}\)\.createBtn/.test(m),
+    'lệnh bấm Tạo không truyền selector người dùng tự chỉ — đúng lỗi 22/09');
+
+  // Enter và Space phải là HAI bước riêng. Gộp lại (kiểu 'phim' của
+  // flow-mode.js gửi cả hai) là submit hai lần với nút nghe cả hai phím —
+  // tests/bam-tao-main.js đã bắt đúng lỗi này khi viết bản đầu.
+  assert.ok(/'click', 'chuot', 'enter', 'space'/.test(b),
+    'thứ tự kiểu bấm phải tách Enter và Space thành hai bước');
+  assert.ok(!/__flowBamMotLan\(el, 'phim'\)/.test(b),
+    "không được dùng kiểu 'phim' dùng chung: nó gửi Enter RỒI Space → submit hai lần");
+  // Dừng ngay khi thấy ăn, chứ không bắn hết cho chắc.
+  assert.ok(/if \(kq\.an\)/.test(b) && /return \{\s*\n?\s*ok: true/.test(b),
+    'phải dừng ngay khi một kiểu bấm đã ăn');
+});
+
+// ── Thư mục dữ liệu đổi tên nhưng KHÔNG được làm mất phiên đăng nhập ──────
+test('thư mục dữ liệu là Tool-flow-veo3, có chuyển dữ liệu cũ sang', () => {
+  const thoMain = fs.readFileSync(path.join(GOC, 'main.js'), 'utf8');
+  // Bỏ ghi chú: chính ghi chú của khối đó có câu "PHẢI CHẠY TRƯỚC
+  // app.whenReady()", nên so vị trí trên bản còn ghi chú là đỏ oan.
+  const m = thoMain.split('\n').filter((d) => !/^\s*\/\//.test(d)).join('\n');
+
+  assert.ok(/TEN_THU_MUC_DU_LIEU = 'Tool-flow-veo3'/.test(m), 'chưa đặt tên thư mục mới');
+  assert.ok(/TEN_THU_MUC_CU = 'Flow Automation Studio'/.test(m), 'chưa biết tên thư mục cũ để chuyển sang');
+  assert.ok(/app\.setPath\('userData'/.test(m), 'chưa đổi đường dẫn userData');
+
+  // Phải đặt TRƯỚC whenReady, nếu không Chromium đã mở kho ở đường cũ.
+  assert.ok(m.indexOf("datThuMucDuLieu") < m.indexOf('app.whenReady()'),
+    'đổi thư mục dữ liệu phải chạy TRƯỚC app.whenReady()');
+
+  // Ba nước nhường nhau: đổi tên → chép → ở lại đường cũ.
+  const khoi = m.slice(m.indexOf('function datThuMucDuLieu'), m.indexOf('let mainWindow'));
+  assert.ok(/renameSync/.test(khoi), 'thiếu bước đổi tên thư mục');
+  assert.ok(/cpSync/.test(khoi), 'thiếu bước chép dự phòng khi đổi tên hỏng');
+  assert.ok(/setPath\('userData', cu\)/.test(khoi),
+    'thiếu đường lùi: chuyển không được thì phải Ở LẠI thư mục cũ, không được bỏ mất phiên đăng nhập');
 });
 
 // ── Kết luận ───────────────────────────────────────────────────────────────

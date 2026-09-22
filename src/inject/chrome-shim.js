@@ -49,20 +49,70 @@
     return true;
   };
 
+  // ══════════════════════════════════════════════════════════════════════
+  //  TRẢ LỜI KHÔNG ĐỒNG BỘ — chỗ này từng làm BA tính năng chết ngầm.
+  //  --------------------------------------------------------------------
+  //  Quy ước của chrome.runtime.onMessage: người nghe trả về `true` nghĩa là
+  //  "tôi sẽ gọi sendResponse SAU", và bên gửi phải CHỜ. Bản cũ ở đây chạy
+  //  đồng bộ: gọi hết người nghe rồi trả về ngay, nên mọi thứ trả lời sau
+  //  đều mất trắng — `result` là undefined.
+  //
+  //  flow-engine.js có ĐÚNG BA chỗ trả lời kiểu đó (đều `return true`):
+  //     RUN_UI_SELFTEST · UPLOAD_IMAGES_TO_FLOW · CHECK_ASSET_NAMES
+  //
+  //  Hậu quả thật, đọc từ báo cáo chẩn đoán 10:13 ngày 22/09/2026:
+  //
+  //      ──── 1. TỰ KIỂM NGAY LÚC XUẤT BÁO CÁO ────
+  //      { "ok": true }
+  //
+  //  Đúng ra chỗ đó phải là bảng 6 phần tử kèm danh sách ứng viên và
+  //  outerHTML. Nút "Kiểm tra 6 phần tử then chốt", "Tải ảnh lên Flow" và
+  //  "Kiểm tra tên ảnh" vì thế chưa bao giờ trả về dữ liệu thật — bấm thì
+  //  thấy "thành công" mà rỗng không.
+  //
+  //  Nay: người nghe nào trả về `true` thì chờ sendResponse, có TRẦN THỜI
+  //  GIAN để một người nghe hỏng không treo cả app. dispatch() bên
+  //  src/main/tabs.js gọi qua executeJavaScript(code, true) nên Electron tự
+  //  await Promise này — giá trị trả về vẫn phải structured-clone được.
+  // ══════════════════════════════════════════════════════════════════════
+  const CHO_TRA_LOI_MS = 60000;   // tự kiểm có mở/đóng menu thẻ nên khá chậm
+
   window.__flowShimDispatch = function (message) {
     let answered = false;
     let result = undefined;
-    const sendResponse = (r) => { if (!answered) { answered = true; result = r; } };
+    let xong = null;                       // gọi để giải phóng bên đang chờ
+    const sendResponse = (r) => {
+      if (answered) return;
+      answered = true;
+      result = r;
+      if (xong) xong();
+    };
     const sender = { tab: { id: TAB_ID }, id: 'flow-studio' };
 
+    let choKhongDongBo = false;
     for (const fn of [...listeners]) {
       try {
-        fn(message, sender, sendResponse);
+        // Người nghe trả về đúng `true` = sẽ trả lời sau.
+        if (fn(message, sender, sendResponse) === true) choKhongDongBo = true;
       } catch (err) {
         console.error('[shim] Người nghe message lỗi:', err);
       }
     }
-    return { ok: true, result };
+
+    if (!choKhongDongBo || answered) return { ok: true, result };
+
+    return new Promise((resolve) => {
+      let hetGio = null;
+      const tra = (quaGio) => {
+        if (hetGio) { clearTimeout(hetGio); hetGio = null; }
+        xong = null;
+        resolve(quaGio
+          ? { ok: false, result, error: `Engine không trả lời "${message && message.action}" trong ${CHO_TRA_LOI_MS / 1000}s` }
+          : { ok: true, result });
+      };
+      xong = () => tra(false);
+      hetGio = setTimeout(() => tra(true), CHO_TRA_LOI_MS);
+    });
   };
 
   // ── chrome.storage.local ────────────────────────────────────────────────

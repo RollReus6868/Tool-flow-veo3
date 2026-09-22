@@ -1,0 +1,31 @@
+BẢN 2.8.4 — CHỈ GỒM CÁC FILE ĐÃ ĐỔI
+====================================
+
+Lần trước tôi gửi CẢ GÓI mã nguồn, và nó đã ghi đè mất bản vá tabs.js mới hơn
+trên máy bạn (bản "tab chạy ngầm giữ kích thước thật" của 2.8.3). Lần này chỉ
+gửi đúng những file đã đổi, nên không có gì khác bị ghi đè.
+
+CÁCH DÙNG
+1. Giải nén gói này.
+2. Chép cả 4 thư mục/file bên trong (GHI_CHU_BAN_MOI.md, README.md, main.js,
+   package.json, src/, tests/) vào thư mục tool của bạn, chọn "Thay thế file
+   ở đích" khi Windows hỏi.
+3. Chạy lại app bằng CHAY_TU_NGUON.bat để thử, hoặc đẩy lên GitHub rồi phát hành.
+
+DANH SÁCH FILE TRONG GÓI
+  GHI_CHU_BAN_MOI.md              ghi chú bản mới (hiện trong app)
+  README.md                       thêm mục 0n, 0n2 và hai đính chính
+  main.js                         đổi thư mục dữ liệu, mở phong bì shim,
+                                  lệnh bấm Tạo mới, báo cáo chẩn đoán 5 mục
+  package.json                    version 2.8.4
+  src/inject/chrome-shim.js       CHỜ được sendResponse gọi sau
+  src/inject/flow-bam-tao.js      MỚI — trình bấm nút Tạo
+  src/main/tabs.js                KHÔI PHỤC bản vá kích thước tab + tiêm file mới
+  tests/run.js                    thêm 3 bài kiểm + khôi phục 1 bài bị mất
+  tests/tabs-main.js              thêm bài 3b2/3b3 (trả lời không đồng bộ)
+  tests/bam-tao-main.js           MỚI — tầng kiểm thử nút Tạo
+  tests/fixture-bam-tao.html      MỚI — trang giả lập nút Tạo
+
+KIỂM TRA NHANH SAU KHI CHÉP
+  Mở PowerShell trong thư mục tool rồi chạy:  npm test
+  Phải thấy: 129/129 PASS  và  18/18 PASS

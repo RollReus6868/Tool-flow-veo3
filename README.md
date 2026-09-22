@@ -1,4 +1,4 @@
-# Flow Automation Studio 2.8.2
+# Flow Automation Studio 2.8.4
 
 Tool desktop tự động hoá Google Flow. Bản chuyển từ tiện ích Chrome
 **Flow Automation Local 1.10.0** sang ứng dụng chạy thẳng trên máy.
@@ -193,6 +193,239 @@ vừa soạn prompt vừa chỉnh cài đặt.
 - **Bỏ "Thử đường dán prompt"** — đường dán đã chạy ổn định ngoài thực tế
   (21.804 ký tự vào đủ trong một lần bơm), mục này không còn việc gì để làm.
 
+
+---
+
+## 0n. Bản 2.8.4 — cú bấm Tạo không tới được Flow, và báo cáo chẩn đoán rỗng
+
+Nhật ký 10:10 → 10:14 ngày 22/09/2026, một tab, một prompt 21.804 ký tự, chế
+độ ảnh, model Nano Banana 2. Bản 2.8.3 đã sửa được chuyện **che lỗi** của
+2.8.2 — `newImg` giờ báo `false` đúng sự thật, và engine tự nhận ra cú bấm
+trượt rồi thử lại:
+
+```
+🔎 Verify: newTile=false, txtCleared=false(len=21804), newImg=false, newBatch=false
+⚠️ Cú click Tạo bị kẹt, đang thử khôi phục...
+✅ Textarea vẫn chứa đúng prompt gốc, chỉ cần click lại
+🖱️ Retry: Clicking Create lần 2...
+🔎 Retry verify: newTile=false, txtCleared=false(len=21804), newImg=false
+[1] Lỗi: Google Flow không đẻ ra thẻ nào sau 60s!
+```
+
+Chữ **vẫn nguyên 21.804 ký tự** trong ô nhập sau hai cú bấm. Không thẻ chờ,
+không ảnh mới. Nghĩa là cú bấm **không tới được chỗ Flow nghe** — chứ không
+phải Flow nhận rồi tạo chậm.
+
+> **Đính chính (2.8.4):** [Mục 0m](#0m-bản-282--treo-im-lặng-sau-khi-bấm-tạo-và-mục-chẩn-đoán-nằm-đó-chết)
+> kết luận lỗi chính là *"Google Flow đổi cấu trúc lưới thẻ kết quả"*. Kết luận
+> đó **đặt sai thứ tự nhân quả**. Lưới trống vì **chưa có gì được tạo** — chính
+> báo cáo chẩn đoán 10:13 cho thấy thế: phần "ứng viên" cho thẻ kết quả chỉ
+> toàn nút trên thanh tiêu đề (Home, Search, Account details…), tức là engine
+> rơi về danh sách chung vì **không có thẻ nào cả**. Không dò được thẻ là
+> **triệu chứng**, không phải nguyên nhân. Nguyên nhân nằm ở cú bấm Tạo.
+
+### Lỗi 1 — hàm bấm cũ không biết tới selector người dùng tự chỉ
+
+Lúc 10:11:32 người dùng đã dùng đúng tính năng của bản 2.8.2:
+
+```
+✅ Đã chọn "Nút Tạo (mũi tên gửi)": button[aria-label="Start generation"] (khớp 1 phần tử)
+🎯 Đã chỉ lại "createBtn": button[aria-label="Start generation"]
+✅ Đã áp selector cho 1 tab đang mở.
+```
+
+Chỉ đúng nút, app nhớ, engine nhận. **Rồi app vẫn bấm chỗ khác.** Vì lệnh
+`INJECT_CLICK_CREATE` gọi `window.__flowClickCreate()`, và hàm đó dò nút bằng
+bộ selector **cứng** của riêng nó (`button.generate-icon-button`, rồi icon
+`arrow_forward`) — nó **không hề đọc** `settings.selectors.createBtn`.
+
+Selector người dùng chỉ chỉ có tác dụng với các hàm dò **bên trong engine**.
+Trình bấm nút chạy ở main world, ngoài engine, nên nằm ngoài đường đó. Tính
+năng "tự vá" của 2.8.2 vì thế không với tới đúng chỗ đang hỏng nhất.
+
+### Lỗi 2 — chỉ thử đúng một kiểu bấm rồi bỏ
+
+`__flowClickCreate()` thử gọi `onClick` của React fiber, không có thì
+`el.click()`. Flow 2026 là Angular Material (`mdc-icon-button
+mat-mdc-button-base`) — không có React fiber, nên luôn rơi về `el.click()`
+trơn. Component nào nghe `pointerdown`/`pointerup` thay vì `click` là bấm xong
+**không việc gì xảy ra**, mà hàm vẫn trả `ok: true` nên không ai biết.
+
+Đây đúng cái bẫy đã trả giá một lần ở trình đổi chế độ (mục 0f): mỗi thư viện
+nghe một loại sự kiện khác nhau.
+
+### Lỗi 3 — báo cáo chẩn đoán trả về `{ "ok": true }` rỗng
+
+Chỗ đáng lẽ là bảng 6 phần tử kèm `outerHTML` của các ứng viên:
+
+```
+──────── 1. TỰ KIỂM NGAY LÚC XUẤT BÁO CÁO ────────
+{
+  "ok": true
+}
+```
+
+Nguyên nhân nằm trong `chrome-shim.js`. Quy ước của
+`chrome.runtime.onMessage`: người nghe trả về `true` nghĩa là *"tôi sẽ gọi
+`sendResponse` SAU"*, và bên gửi **phải chờ**. Bản cũ của
+`__flowShimDispatch` chạy **đồng bộ**: gọi hết người nghe rồi trả về ngay, nên
+mọi câu trả lời gọi sau đều **mất trắng**.
+
+Engine có **đúng ba chỗ** trả lời kiểu đó, và cả ba đều là tính năng người
+dùng bấm:
+
+| Lệnh | Nút trong app | Hậu quả |
+|---|---|---|
+| `RUN_UI_SELFTEST` | 🔬 Kiểm tra 6 phần tử then chốt | báo cáo rỗng, không chỉ ra được phần tử nào vỡ |
+| `UPLOAD_IMAGES_TO_FLOW` | ⬆ Tải ảnh lên Flow | không biết ảnh nào lên được, ảnh nào không |
+| `CHECK_ASSET_NAMES` | 🔍 Kiểm tra tên ảnh | không biết kho Flow thiếu mã nào |
+
+Ba tính năng này **chưa bao giờ** trả về dữ liệu thật từ ngày chuyển sang bản
+desktop. Bấm thì thấy "thành công" mà rỗng không.
+
+### Bản 2.8.4 có gì
+
+**Trình bấm nút Tạo riêng** (`src/inject/flow-bam-tao.js`), không đụng engine:
+
+- **Ưu tiên tuyệt đối selector người dùng tự chỉ**, rồi mới tới
+  `generate-icon-button`, rồi `aria-label` (`Start generation`, `generate`,
+  `tạo`, `gửi`…), rồi icon (`arrow_forward`, `arrow_upward`, `send`,
+  `play_arrow`), rồi nút cạnh ô nhập.
+- **Thử lần lượt bốn kiểu bấm, xác nhận sau mỗi lần, dừng ngay khi thấy ăn**:
+  `click` → chuỗi chuột đầy đủ → `Enter` → `Space`. Xác nhận bằng ba dấu hiệu
+  độc lập: chữ trong ô nhập mất đi, có thẻ chờ mới, hoặc nút thành disabled.
+  Enter và Space cố ý là **hai bước riêng** — gộp lại thì nút nghe cả hai phím
+  sẽ submit **hai lần** cho cùng một prompt (`tests/bam-tao-main.js` bắt đúng
+  lỗi này khi tôi viết bản đầu).
+- **Nút đang bị Flow tắt thì nói ngay**, không bấm bốn lần vô ích.
+- **Đọc chữ Flow đang báo lỗi trên trang** khi cả bốn kiểu đều không ăn
+  (snackbar, `mat-error`, `role="alert"`), bỏ qua chữ đang bị ẩn. Nhật ký giờ
+  nói được *vì sao*, chứ không chỉ "không xảy ra gì".
+- Nhật ký ghi rõ **kiểu bấm nào ăn** và **tìm nút bằng đường nào** — lần sau
+  đọc log là biết Flow đang nghe sự kiện gì.
+
+**`chrome-shim.js` biết chờ trả lời gọi sau**, có trần 60 giây để một người
+nghe hỏng không treo cả app. `main.js` có `moPhongBi()` mở lớp vỏ
+`{ ok, result }` của shim — quên mở một lớp này là lại thấy `{ ok: true }` rỗng.
+
+**Báo cáo chẩn đoán .txt có thêm ba mục** — đúng những thứ bản 10:13 thiếu:
+
+- **Kiểm kê DOM**: tên mọi thẻ tự đặt (`flow-*`, `mat-*`) đang có trên trang,
+  kèm số chỗ còn khớp với từng selector engine dùng để dò thẻ. Google đổi tên
+  thẻ là thấy ngay, **kể cả khi lưới đang trống**.
+- **Nút Tạo/gửi**: nút app đang định bấm, tìm ra bằng đường nào, độ dài chữ
+  trong ô nhập, và chữ Flow đang báo lỗi.
+- **Selector người dùng tự chỉ**: đang dùng cái gì.
+
+**Thư mục dữ liệu đổi tên thành `Tool-flow-veo3`** (trước là `Flow Automation
+Studio`). Dữ liệu cũ được **mang theo**, ba nước nhường nhau: đổi tên thư mục
+→ nếu không được thì chép → nếu cả hai không được thì **ở lại thư mục cũ**.
+Trong thư mục đó có phiên đăng nhập Google của từng tài khoản, cài đặt và toàn
+bộ dự án — thà tên chưa đổi còn hơn để bạn phải đăng nhập lại tất cả. Lần đầu
+mở 2.8.4, Nhật ký ghi một dòng nói đã chuyển thế nào.
+
+> Tên app, tên bộ cài (`FlowAutomationStudio-<v>-setup.exe`) và tên thư mục
+> cài đặt **không đổi** — đổi những cái đó sẽ làm bộ tự cập nhật không tìm
+> thấy file phát hành nữa. Chỉ thư mục **dữ liệu** đổi tên.
+
+### Lỗi 4 — gói zip ghi đè bản vá mới hơn (lỗi của tôi, không phải của app)
+
+Trong lúc dò lỗi trên, tôi phát hiện bài kiểm `tests/luoi-ao-main.js` **đang
+đỏ** trên chính bản 2.8.3 đang chạy: tab ẩn cao `0px`, thấy `0 thẻ`.
+
+Truy `git log -S` ra ngay: bản vá "tab chạy ngầm giữ kích thước thật"
+(`khungChoTab`, commit `3e68aff`) đã bị commit sau đó **xoá đi**. Commit đó
+chính là lúc gói zip 2.8.2 của tôi được giải nén đè lên thư mục làm việc.
+
+Tôi đóng gói **toàn bộ mã nguồn** từ một bản gốc cũ hơn (2.8.1), trong khi trên
+máy đã có `tabs.js` mới hơn. Giải nén đè → `tabs.js` mới bị thay bằng bản cũ →
+`tests/run.js` cũng bị thay, nên **bài kiểm canh chính bản vá đó cũng mất
+theo**, và không có gì đỏ lên để báo.
+
+Ba thứ bị mất và đã lấy lại trong 2.8.4: bản vá `khungChoTab` trong
+`src/main/tabs.js`, bài kiểm tĩnh trong `tests/run.js`, và mục README mô tả nó
+(nay là [mục 0n2](#0n2-bản-283--tab-chạy-ngầm-không-thấy-ảnh-lưới-cuộn-ảo)).
+
+Bài học, ghi vào đây để lần sau không lặp: **bản sửa nhỏ thì gửi đúng những
+file đã đổi kèm ba lệnh `git add/commit/push`, đừng gửi lại cả gói** — nhất là
+khi trên máy người dùng có commit mà sandbox chưa có. Trước khi đóng gói phải
+`git fetch` rồi đối chiếu với nhánh trên GitHub.
+
+> Rất có thể đây mới là nguyên nhân chính của mẻ 10:10 sáng 22/09: khung nhìn
+> cao `0px` thì mọi `getBoundingClientRect()` trả về số 0, lưới cuộn ảo vẽ 0
+> thẻ, và trang Flow gần như không dùng được. Nói **"rất có thể"** chứ không
+> nói chắc: chưa chạy lại trên Flow thật để xác nhận.
+
+### Vì sao mấy lỗi này không bị bắt sớm hơn
+
+- **Lỗi 1:** bản 2.8.2 nối được selector tự chỉ vào engine và có bài kiểm
+  canh đủ năm mắt nối đó — nhưng trình bấm nút chạy **ngoài** engine, nên nằm
+  ngoài cả năm mắt. Tôi kiểm đường mình vừa nối, không kiểm đường đang hỏng.
+- **Lỗi 2:** không có fixture nào dựng nút chỉ nghe `pointerdown`. Bài kiểm
+  đổi chế độ có dựng (mục 0f) nhưng không ai mang bài học đó sang nút Tạo.
+- **Lỗi 3:** đây là lỗi **tôi giao hàng ở 2.8.2**. Tôi thêm nút "Tải báo cáo
+  .txt" và kiểm rằng *nút có mặt*, chứ không kiểm *báo cáo có nội dung*. Cả
+  bốn tầng kiểm thử đều xanh vì không tầng nào gọi một lệnh trả lời không đồng
+  bộ rồi đọc kết quả. Chính người dùng gửi lại báo cáo rỗng mới lộ ra.
+
+Bản này thêm bốn bài kiểm thử, cả bốn đều **phá thử** để chắc là đỏ thật:
+
+1. **`tests/bam-tao-main.js` + `tests/fixture-bam-tao.html`** (tầng mới) —
+   bốn đời nút, mỗi đời chỉ nghe một loại sự kiện, cộng một nút không nghe gì
+   và một nút bị tắt. Fixture **đếm số lần submit** và bài kiểm khẳng định
+   **đúng bằng 1**. Có cả nút gây nhiễu mang đúng class mà hàm cũ tìm đầu
+   tiên, để chứng minh selector người dùng chỉ được ưu tiên thật.
+2. **`tests/tabs-main.js` bài 3b2/3b3** — đăng ký người nghe trả lời sau
+   300ms rồi gọi `dispatch()` đúng đường app dùng. Phá thử cho shim về đồng bộ
+   thì nó trả về đúng `{"ok":true}` — **y hệt** chuỗi trong báo cáo của người
+   dùng.
+3. **Tầng 1** — shim có chờ và `main.js` có mở phong bì cho cả ba lệnh.
+4. **Tầng 1** — lệnh bấm Tạo đi qua trình mới **kèm** selector người dùng,
+   Enter/Space tách hai bước, và thư mục dữ liệu có đủ ba nước nhường nhau.
+
+### Chưa nghiệm thu được
+
+**Chưa biết chắc vì sao Flow không nhận cú bấm.** Bản này chữa hai nguyên
+nhân có bằng chứng (bấm nhầm nút vì bỏ qua selector người dùng chỉ; chỉ thử
+một kiểu bấm) và mở đường đọc ra nguyên nhân thứ ba nếu có (chữ Flow báo trên
+trang). Nếu thật ra Flow **từ chối prompt 21.804 ký tự** thì bản này không
+chữa được chuyện đó — nhưng nhật ký sẽ nói thẳng ra, thay vì chờ 60 giây rồi
+báo "không đẻ ra thẻ nào".
+
+Cách phân biệt nhanh nhất, chỉ mất một phút: chạy **một prompt ngắn** (~300
+ký tự) trong cùng dự án, cùng model. Tạo được thì vấn đề là **độ dài prompt**;
+vẫn không tạo được thì là **cú bấm**.
+
+Toàn bộ phần này chỉ chạy trên **trang Flow giả lập**. Thao tác trên Flow
+thật, bộ cài im lặng NSIS trên Windows thật, tráo app trên Mac thật: vẫn
+**chưa chạy lần nào**.
+
+---
+
+## 0n2. Bản 2.8.3 — tab chạy ngầm không thấy ảnh (lưới cuộn ảo)
+
+> **Khôi phục ở 2.8.4.** Bản vá dưới đây đã bị **gói zip 2.8.2 ghi đè mất** —
+> xem [mục 0n](#0n-bản-284--cú-bấm-tạo-không-tới-được-flow-và-báo-cáo-chẩn-đoán-rỗng),
+> phần *"gói zip ghi đè bản vá mới hơn"*. 2.8.4 đã lấy lại cả bản vá lẫn hai
+> bài kiểm thử canh nó.
+
+**Triệu chứng.** Bấm chạy, prompt được dán và bấm Tạo bình thường, nhưng vài
+giây sau mọi tab báo đỏ `KHÔNG TÌM THẤY "Thẻ video / ảnh"` và không bao giờ tải
+được ảnh về.
+
+**Nguyên nhân gốc.** Google đã đổi lưới kết quả của Flow sang kiểu "cuộn ảo"
+(`cdk-virtual-scroll-viewport`): trang chỉ vẽ số thẻ **vừa với khung nhìn**. App
+ẩn các tab chạy ngầm bằng cách thu chúng về kích thước **0×0**. Khung cao 0 thì
+Flow vẽ 0 thẻ, nên engine nhìn vào lưới trống — dù ảnh đã tạo xong trên máy chủ.
+Trước khi Google đổi, lưới vẽ đủ mọi thẻ bất kể kích thước nên cách ẩn cũ vẫn chạy.
+
+**Sửa.** Tab ẩn giờ giữ nguyên kích thước thật (khung vùng trình duyệt gần nhất,
+hoặc 1280×800), chỉ tắt hiển thị. Engine không đổi một byte.
+
+**Vì sao lần trước không bắt được.** Các trang giả lập dùng để kiểm thử vẽ đủ
+thẻ bất kể khung cao bao nhiêu, và không bài nào chạy tab ở trạng thái ẩn. Nay có
+`tests/luoi-ao-main.js`: trang giả lập lưới ảo, tab ẩn qua đúng `TabManager`
+thật. Chạy với bản 2.8.1 thì bài này đỏ (0 thẻ), bản 2.8.2 thì xanh.
 
 ---
 

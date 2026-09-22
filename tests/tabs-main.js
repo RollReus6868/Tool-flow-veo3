@@ -103,6 +103,46 @@ app.whenReady().then(async () => {
   console.log(`3b. getBytesInUse báo 0          : ${ok3b ? '✓ đúng' : `✗ báo ${bytes}/${bytesCb}`}`);
   if (!ok3b) failures.push(`getBytesInUse báo ${bytes} thay vì 0 — engine sẽ tự xoá dự án cũ`);
 
+  // ── 3b2. Trả lời KHÔNG ĐỒNG BỘ phải về được tới tiến trình chính ──────
+  //
+  //  Quy ước chrome.runtime.onMessage: người nghe trả về `true` nghĩa là
+  //  "tôi sẽ gọi sendResponse SAU". Bản chrome-shim cũ chạy đồng bộ và trả về
+  //  ngay, nên mọi câu trả lời kiểu đó MẤT TRẮNG. Ba chỗ trong engine dùng
+  //  đúng kiểu đó: RUN_UI_SELFTEST, UPLOAD_IMAGES_TO_FLOW, CHECK_ASSET_NAMES.
+  //
+  //  Bằng chứng thật — báo cáo chẩn đoán 10:13 ngày 22/09/2026 ghi đúng hai
+  //  dòng này ở chỗ đáng lẽ là bảng 6 phần tử kèm outerHTML:
+  //      ──── 1. TỰ KIỂM NGAY LÚC XUẤT BÁO CÁO ────
+  //      { "ok": true }
+  //
+  //  Bài này đăng ký một người nghe trả lời sau 300ms rồi gọi dispatch() đúng
+  //  đường app dùng. Không chờ được thì result là undefined.
+  await tab.view.webContents.executeJavaScript(`
+    chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
+      if (msg && msg.action === 'KIEM_TRA_TRA_LOI_SAU') {
+        setTimeout(() => sendResponse({ ok: true, bangChung: 'tra-loi-sau' }), 300);
+        return true;
+      }
+      if (msg && msg.action === 'KIEM_TRA_TRA_LOI_NGAY') {
+        sendResponse({ ok: true, bangChung: 'tra-loi-ngay' });
+      }
+    });
+    undefined;
+  `, true);
+
+  const traSau = await tm.dispatch(tab.id, { action: 'KIEM_TRA_TRA_LOI_SAU' });
+  const okSau = traSau && traSau.result && traSau.result.bangChung === 'tra-loi-sau';
+  console.log(`3b2. Trả lời sau (async)         : ${okSau ? '✓ về đủ' : '✗ MẤT: ' + JSON.stringify(traSau)}`);
+  if (!okSau) failures.push('sendResponse không đồng bộ bị mất — tự kiểm giao diện sẽ rỗng');
+
+  // Trả lời ngay vẫn phải chạy như cũ, và KHÔNG được chờ hết trần thời gian.
+  const t0 = Date.now();
+  const traNgay = await tm.dispatch(tab.id, { action: 'KIEM_TRA_TRA_LOI_NGAY' });
+  const treo = Date.now() - t0;
+  const okNgay = traNgay && traNgay.result && traNgay.result.bangChung === 'tra-loi-ngay' && treo < 2000;
+  console.log(`3b3. Trả lời ngay (sync)         : ${okNgay ? `✓ về đủ, ${treo}ms` : '✗ ' + JSON.stringify(traNgay) + ` (${treo}ms)`}`);
+  if (!okNgay) failures.push('Trả lời đồng bộ bị hỏng hoặc bị chờ oan');
+
   // ── 3c. Hàm của engine phải được phơi ra cho trình đổi chế độ ────────
   // Engine bị bọc trong IIFE nên hàm của nó không nằm trên window. tabs.js
   // nối thêm một đoạn xuất BÊN TRONG lớp bọc để flow-mode.js dùng lại ĐÚNG
