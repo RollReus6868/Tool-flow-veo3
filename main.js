@@ -889,9 +889,28 @@ async function handleEngineMessage(message, senderWc) {
       sendUi('run-state', { tabId, project: message.data || null, action });
       return { success: true };
 
+    // Người dùng vừa bấm vào một phần tử trên trang Flow (hoặc bấm Esc).
+    // Trước đây hai action này bị đẩy chung vào 'run-state' rồi giao diện bỏ
+    // qua — selector người dùng vừa chỉ bị NÉM ĐI. Nay có kênh riêng để giao
+    // diện lưu lại vào settings.selectors. Xem README mục 0a.
     case 'PICK_RESULT':
+      logToUi('success',
+        `🎯 Đã chỉ lại "${(message.data && message.data.targetType) || '?'}": ` +
+        `${(message.data && message.data.selector) || ''} ` +
+        `(khớp ${(message.data && message.data.matches) || 0} phần tử)`, tabId);
+      sendUi('ui-pick', { tabId, action, data: message.data || null });
+      return { success: true };
+
     case 'PICK_CANCELLED':
-      sendUi('run-state', { tabId, action, data: message.data || null });
+      sendUi('ui-pick', { tabId, action, data: null });
+      return { success: true };
+
+    // Engine vừa kết luận một phần tử đã vỡ. Trước đây action này rơi vào
+    // nhánh default ("Action chưa hỗ trợ") nên app không biết gì — người dùng
+    // chỉ thấy một dòng log đỏ trôi qua giữa hàng trăm dòng khác. Nay đẩy
+    // thẳng lên mục Chẩn đoán để nó tự sáng đèn.
+    case 'UI_BREAK':
+      sendUi('ui-break', { tabId, data: message.data || null });
       return { success: true };
 
     // ── Tắt máy khi xong ───────────────────────────────────────────────
@@ -1054,6 +1073,79 @@ function registerIpc() {
   ipcMain.handle('app:eng:ui-selftest', () => guiChoTabDangMo({ action: 'RUN_UI_SELFTEST' }));
   ipcMain.handle('app:eng:ui-health',   () => guiChoTabDangMo({ action: 'GET_UI_HEALTH' }));
   ipcMain.handle('app:eng:ui-clear',    () => guiChoTabDangMo({ action: 'CLEAR_UI_HEALTH' }));
+
+  // ══════════════════════════════════════════════════════════════════════
+  //  CHỈ LẠI PHẦN TỬ FLOW BẰNG TAY — ba lệnh dưới đây là phần BỊ BỎ SÓT
+  //  khi chuyển từ tiện ích Chrome sang desktop. Xem README mục 0a.
+  //  --------------------------------------------------------------------
+  //  Engine đã mang sẵn cả cơ chế: nhận START_PICKING để bật chế độ "bấm
+  //  vào phần tử", gửi PICK_RESULT kèm selector sinh ra, và ưu tiên
+  //  settings.selectors[key] TRƯỚC selector mặc định (resolveSelector).
+  //
+  //  Nhưng bản desktop chưa bao giờ nối vào: không ai gửi START_PICKING,
+  //  PICK_RESULT về tới thì bị bỏ đi, và settings.selectors không hề được
+  //  gom vào bộ cài đặt. Nên câu báo lỗi của engine — "bấm Chọn trên trang
+  //  hoặc Tải báo cáo .txt" — chỉ tới hai cái nút KHÔNG TỒN TẠI, và người
+  //  dùng không có cách nào tự vá khi Google đổi giao diện (22/09/2026).
+  // ══════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle('app:eng:ui-pick', (_e, targetType) =>
+    guiChoTabDangMo({ action: 'START_PICKING', data: { targetType } }));
+
+  // Đẩy selector người dùng vừa chỉ xuống MỌI tab đang sẵn sàng, để có tác
+  // dụng ngay trong mẻ đang chạy chứ không phải chờ lần Bắt đầu sau.
+  // Engine đọc UPDATE_SETTINGS bằng { ...state.settings, ...message.data }.
+  ipcMain.handle('app:eng:selectors-push', async (_e, selectors) => {
+    const ds = tabManager.tabs.filter((t) => t.ready);
+    if (!ds.length) return { ok: false, error: 'Chưa có tab Flow nào sẵn sàng' };
+    for (const t of ds) {
+      try {
+        await tabManager.dispatch(t.id, {
+          action: 'UPDATE_SETTINGS',
+          data: { selectors: selectors || {} }
+        });
+      } catch (_) { /* tab đang đóng thì bỏ qua, không làm vỡ cả vòng */ }
+    }
+    return { ok: true, soTab: ds.length };
+  });
+
+  // Xuất báo cáo chẩn đoán ra .txt để gửi đi vá. Gộp HAI nguồn:
+  //   • bản tự kiểm ngay lúc này (RUN_UI_SELFTEST) — có danh sách ứng viên
+  //     kèm outerHTML, đủ để viết lại selector mới;
+  //   • bản engine TỰ CHỤP đúng lúc nó trượt (veoUiDiagnostics trong kho dữ
+  //     liệu) — quý hơn, vì nó chụp trang ở đúng thời điểm hỏng.
+  ipcMain.handle('app:eng:ui-report', async () => {
+    const tuKiem = await guiChoTabDangMo({ action: 'RUN_UI_SELFTEST' });
+    const { veoUiDiagnostics } = store.get('veoUiDiagnostics');
+
+    const chu = [
+      '════════ BÁO CÁO CHẨN ĐOÁN GIAO DIỆN FLOW ════════',
+      `Thời điểm xuất : ${new Date().toLocaleString('vi-VN')}`,
+      `Phiên bản app  : ${app.getVersion()}`,
+      `Hệ điều hành   : ${process.platform} ${process.arch}`,
+      '',
+      'Gửi NGUYÊN file này đi để được vá. Không có thông tin đăng nhập',
+      'nào trong đây — chỉ có cấu trúc HTML của trang Flow.',
+      '',
+      '──────── 1. TỰ KIỂM NGAY LÚC XUẤT BÁO CÁO ────────',
+      JSON.stringify(tuKiem, null, 2),
+      '',
+      '──────── 2. ENGINE TỰ CHỤP LÚC NÓ TRƯỢT ────────',
+      (veoUiDiagnostics && Object.keys(veoUiDiagnostics).length)
+        ? JSON.stringify(veoUiDiagnostics, null, 2)
+        : '(chưa có bản chụp nào — hoặc đã bị nút "Xoá ghi nhận" dọn mất)',
+      ''
+    ].join('\n');
+
+    const duongDan = path.join(app.getPath('userData'), 'flow-studio-chan-doan.txt');
+    try {
+      fs.writeFileSync(duongDan, chu, 'utf8');
+    } catch (err) {
+      return { ok: false, error: `Không ghi được file báo cáo: ${err.message}` };
+    }
+    logToUi('success', `📄 Đã xuất báo cáo chẩn đoán: ${duongDan}`);
+    return { ok: true, duongDan };
+  });
 
   // ── Hợp đồng dữ liệu của hai lệnh ảnh ──────────────────────────────────
   // Đọc thẳng từ flow-engine.js, KHÔNG đoán theo tên biến bên ngoài:

@@ -2910,7 +2910,20 @@ async function pastePrompt(video) {
         getGridContainers().map(gc => gc.textContent.substring(0, 200))
     );
     // ── Also snapshot image count for IMAGE MODE (Nano Banana) detection ──
-    video._preClickImageCount = document.querySelectorAll('[data-tile-id] img, a[href*="/edit/"] img').length;
+    // ── KHÁC content-v2.js (sửa ở 2.8.2) — xem README mục 0a ─────────────
+    //  Dòng này TRƯỚC ĐÂY đếm bằng '[data-tile-id] img, a[href*="/edit/"] img'
+    //  (chỉ ảnh NẰM TRONG thẻ), trong khi hai chỗ đếm lại sau khi bấm (xem
+    //  currentImageCount và currentImageCount2 ở dưới) đã bỏ '[data-tile-id]'
+    //  "để chạy được với giao diện mới" — tức là đếm MỌI ảnh trên trang.
+    //
+    //  So một số nhỏ với một số lớn thì newImg gần như LUÔN true: nó đếm cả
+    //  logo, avatar, icon. Engine vì thế kết luận "✅ Create accepted" cho mọi
+    //  prompt, kể cả khi cú bấm Tạo chẳng vào đâu, rồi đi chờ thẻ kết quả
+    //  không bao giờ tới — treo im lặng, không một dòng lỗi. Đúng triệu chứng
+    //  nhật ký 22/09: newTile=false, txtCleared=false, newImg=true ở CẢ 6 tab.
+    //
+    //  Chữa: đếm TRƯỚC và SAU bằng CÙNG một bộ lọc, nên hiệu số lại có nghĩa.
+    video._preClickImageCount = document.querySelectorAll('img, a[href*="/edit/"] img').length;
     // ── Click Create via MAIN world injection ──
     // Isolated world clicks are ignored by React. Route through background.js.
     addLog('info', `[${video.promptIndex}] 🖱️ Clicking Create via MAIN world...`);

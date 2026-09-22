@@ -60,6 +60,10 @@ contextBridge.exposeInMainWorld('flowApp', {
     uiSelftest:      ()     => ipcRenderer.invoke('app:eng:ui-selftest'),
     uiHealth:        ()     => ipcRenderer.invoke('app:eng:ui-health'),
     uiClear:         ()     => ipcRenderer.invoke('app:eng:ui-clear'),
+    // Chỉ lại phần tử bằng cách bấm trên trang Flow, và xuất báo cáo .txt.
+    uiPick:          (k)    => ipcRenderer.invoke('app:eng:ui-pick', k),
+    uiReport:        ()     => ipcRenderer.invoke('app:eng:ui-report'),
+    pushSelectors:   (s)    => ipcRenderer.invoke('app:eng:selectors-push', s),
     checkAssetNames: (d)    => ipcRenderer.invoke('app:eng:check-assets', d),
     checkFlowAssets: (d)    => ipcRenderer.invoke('app:eng:check-flow-assets', d),
     uploadImages:    (d)    => ipcRenderer.invoke('app:eng:upload-images', d)
@@ -95,7 +99,8 @@ contextBridge.exposeInMainWorld('flowApp', {
 
   // ── Sự kiện từ tiến trình chính ────────────────────────────────────────
   on: (channel, callback) => {
-    const cho = ['log', 'tabs', 'accounts', 'stats', 'table', 'progress', 'run-state', 'cap-nhat'];
+    const cho = ['log', 'tabs', 'accounts', 'stats', 'table', 'progress', 'run-state',
+                 'cap-nhat', 'ui-pick', 'ui-break'];
     if (!cho.includes(channel)) return;
     ipcRenderer.on('ui:' + channel, (_e, payload) => callback(payload));
   }

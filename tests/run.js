@@ -1139,19 +1139,6 @@ test('model: nối dây trong main.js đủ các chỗ', () => {
   assert.ok(/if \(tab\.busy\) return \{ ok: false/.test(lay("'app:tabs:listModels'")), 'đọc model lúc tab đang chạy');
 });
 
-test('tab ẩn KHÔNG bị thu về 0×0 (lưới ảo của Flow sẽ vẽ 0 thẻ)', () => {
-  const { khungChoTab } = require('../src/main/tabs.js');
-  const z = { x: 0, y: 0, width: 0, height: 0 };
-  const k1 = khungChoTab(z, null);
-  assert.ok(k1.width >= 400 && k1.height >= 300, 'chưa có vùng hiển thị vẫn phải có khung thật');
-  assert.deepStrictEqual(khungChoTab({ x: 300, y: 60, width: 1000, height: 700 }, null), { x: 300, y: 60, width: 1000, height: 700 });
-  const cuoi = { x: 300, y: 60, width: 1000, height: 700 };
-  assert.deepStrictEqual(khungChoTab(z, cuoi), cuoi, 'vùng hiển thị bị ẩn thì giữ khung đẹp gần nhất');
-  const t = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'tabs.js'), 'utf8');
-  const ab = t.slice(t.indexOf('  applyBounds() {'), t.indexOf('  async reload('));
-  assert.ok(!/width:\s*0/.test(ab), 'applyBounds lại đặt khung 0×0 cho tab');
-});
-
 test('model: tiêm flow-model.js SAU flow-mode.js', () => {
   const t = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'tabs.js'), 'utf8');
   const a = t.indexOf("['trình đổi chế độ'"), b = t.indexOf("['trình chọn model'");
@@ -1281,6 +1268,131 @@ test('macOS: đóng cửa sổ là thoát hẳn, và có menu Sửa để Cmd+V 
     assert.ok(m.includes(`role: '${vt}'`), `menu Mac thiếu vai trò ${vt}`);
   }
   assert.ok(/dungMenuMac\(\);\s*\n\s*createWindow\(\);/.test(m), 'chưa gọi dungMenuMac() trước khi mở cửa sổ');
+});
+
+// ── Engine: đếm ảnh trước/sau khi bấm Tạo phải CÙNG một bộ lọc ─────────────
+//
+//  LỖI THẬT 22/09/2026. Nhật ký ghi ở cả 6 tab:
+//      🔎 Verify: newTile=false, txtCleared=false(len=2421), newImg=true
+//  rồi "✅ Create accepted — monitoring for 4 tiles..." và treo mãi ở
+//  "⏳ Đang chờ thẻ video mới xuất hiện".
+//
+//  Nguyên nhân: chỗ đếm TRƯỚC khi bấm dùng '[data-tile-id] img, …' (chỉ ảnh
+//  trong thẻ) còn hai chỗ đếm SAU khi bấm dùng 'img, …' (mọi ảnh trên trang).
+//  Nhỏ so với lớn nên newImg gần như luôn true — cú bấm Tạo trượt vẫn được
+//  coi là thành công, và lỗi thật (Flow đổi giao diện lưới thẻ) bị che kín.
+//
+//  Bài kiểm này so THẲNG chuỗi selector ở ba chỗ. Đảo một chữ là đỏ ngay.
+test('engine: đếm ảnh trước và sau khi bấm Tạo dùng cùng một selector', () => {
+  const e = fs.readFileSync(path.join(GOC, 'src', 'inject', 'flow-engine.js'), 'utf8');
+
+  const lay = (re, ten) => {
+    const m = e.match(re);
+    assert.ok(m, `không tìm thấy ${ten} trong flow-engine.js — code đã đổi, xem lại bài kiểm này`);
+    return m[1];
+  };
+
+  const truoc = lay(/_preClickImageCount = document\.querySelectorAll\('([^']+)'\)/,
+                    'chỗ đếm TRƯỚC khi bấm (_preClickImageCount)');
+  const sau1  = lay(/const currentImageCount = document\.querySelectorAll\('([^']+)'\)/,
+                    'chỗ đếm SAU khi bấm (currentImageCount)');
+  const sau2  = lay(/const currentImageCount2 = document\.querySelectorAll\('([^']+)'\)/,
+                    'chỗ đếm SAU khi bấm lần 2 (currentImageCount2)');
+
+  assert.strictEqual(truoc, sau1,
+    `đếm trước ("${truoc}") khác đếm sau ("${sau1}") — newImg sẽ luôn true và treo im lặng`);
+  assert.strictEqual(truoc, sau2,
+    `đếm trước ("${truoc}") khác đếm sau lần 2 ("${sau2}") — retry cũng bị che lỗi`);
+
+  // Chốt thêm: không được quay lại bộ lọc hẹp theo [data-tile-id]. Giao diện
+  // Flow mới không còn thuộc tính đó, nên đếm hẹp là luôn ra 0 ở cả hai đầu
+  // và newImg thành luôn FALSE — lại sai theo hướng ngược lại.
+  assert.ok(!truoc.includes('[data-tile-id]'),
+    'bộ lọc đếm ảnh không được phụ thuộc [data-tile-id] (giao diện Flow mới đã bỏ)');
+});
+
+// ── MỌI action engine GỬI phải có người trả lời ở tiến trình chính ─────────
+//
+//  Đây là bài kiểm cho CẢ MỘT LOẠI lỗi, không phải một lỗi lẻ. Engine gửi
+//  action mà main.js không có `case` thì nó rơi vào nhánh default và nhận
+//  { success:false, error:'Action chưa hỗ trợ: …' } — engine coi như lỗi kết
+//  nối rồi bỏ qua trong im lặng. Đã cắn thật hai lần:
+//
+//    • REGISTER_TAB thiếu  -> ba tab dùng chung khoá 'single', ghi đè dự án.
+//    • UI_BREAK thiếu      -> app không biết giao diện Flow đã vỡ, mục Chẩn
+//                             đoán im lìm trong khi engine đang kêu.
+//
+//  Thà bài kiểm này đỏ khi thêm tính năng, còn hơn để lặng lẽ mất dữ liệu.
+test('mọi action engine gửi đều có case trong main.js', () => {
+  const e = fs.readFileSync(path.join(GOC, 'src', 'inject', 'flow-engine.js'), 'utf8');
+  const m = fs.readFileSync(path.join(GOC, 'main.js'), 'utf8');
+
+  const gui = new Set();
+  const nhat = (re) => { let x; while ((x = re.exec(e))) gui.add(x[1]); };
+  nhat(/sendMessage\(\{\s*action:\s*'([A-Z_]+)'/g);
+  nhat(/\bbg\('([A-Z_]+)'/g);
+  nhat(/action:\s*'([A-Z_]+)'\s*,\s*data/g);
+
+  // Bỏ ra những action engine NHẬN (app gửi xuống), không phải engine gửi lên.
+  const engineNhan = new Set();
+  let y; const reNhan = /message\.action === '([A-Z_]+)'/g;
+  while ((y = reNhan.exec(e))) engineNhan.add(y[1]);
+
+  const nhan = new Set();
+  let z; const reCase = /case '([A-Z_]+)':/g;
+  while ((z = reCase.exec(m))) nhan.add(z[1]);
+
+  const thieu = [...gui].filter((a) => !engineNhan.has(a) && !nhan.has(a)).sort();
+  assert.ok(gui.size >= 25, `chỉ nhặt được ${gui.size} action — biểu thức nhặt có thể đã hỏng`);
+  assert.deepStrictEqual(thieu, [],
+    `main.js chưa trả lời ${thieu.length} action engine gửi: ${thieu.join(', ')}`);
+});
+
+// ── Đường tự vá selector phải nối đủ từ đầu tới cuối ──────────────────────
+//
+//  Engine dặn người dùng "bấm Chọn trên trang hoặc Tải báo cáo .txt" khi nó
+//  trượt. Trước 2.8.2 hai nút đó KHÔNG TỒN TẠI trong app, và settings.selectors
+//  — khoá mà resolveSelector() của engine đọc — không hề được giao diện gom.
+//  Nên cơ chế tự vá của engine nằm đó chết. Bài kiểm này canh cả 5 mắt nối.
+test('đường tự chỉ selector nối đủ: nút → engine → settings.selectors', () => {
+  const html = fs.readFileSync(path.join(GOC, 'src', 'ui', 'index.html'), 'utf8');
+  const appjs = fs.readFileSync(path.join(GOC, 'src', 'ui', 'app.js'), 'utf8');
+  const pre = fs.readFileSync(path.join(GOC, 'src', 'main', 'preload-ui.js'), 'utf8');
+  const m = fs.readFileSync(path.join(GOC, 'main.js'), 'utf8');
+  const e = fs.readFileSync(path.join(GOC, 'src', 'inject', 'flow-engine.js'), 'utf8');
+
+  // 1. Engine vẫn đọc settings.selectors — nếu Google/engine đổi thì phải biết.
+  assert.ok(/state\.settings\.selectors/.test(e),
+    'engine không còn đọc settings.selectors — xem lại resolveSelector()');
+
+  // 2. Có nút trong giao diện.
+  assert.ok(html.includes('id="btnUiReport"'), 'thiếu nút "Tải báo cáo .txt"');
+  assert.ok(html.includes('id="uiSelectorBox"'), 'thiếu chỗ vẽ dòng "Chọn trên trang"');
+  assert.ok(/data-pick=/.test(appjs), 'giao diện không vẽ nút "Chọn trên trang"');
+
+  // 3. Preload phơi đủ ba hàm, và cho phép hai kênh sự kiện mới.
+  for (const h of ['uiPick', 'uiReport', 'pushSelectors']) {
+    assert.ok(pre.includes(h + ':'), `preload-ui.js chưa phơi engine.${h}`);
+  }
+  for (const k of ['ui-pick', 'ui-break']) {
+    assert.ok(pre.includes(`'${k}'`), `preload-ui.js chưa cho phép kênh '${k}'`);
+  }
+
+  // 4. Tiến trình chính gửi START_PICKING và đẩy UPDATE_SETTINGS.
+  assert.ok(/action: 'START_PICKING'/.test(m), 'main.js không gửi START_PICKING');
+  assert.ok(/action: 'UPDATE_SETTINGS'/.test(m),
+    'main.js không đẩy UPDATE_SETTINGS — selector vừa chỉ sẽ phải chờ lần Bắt đầu sau');
+
+  // 5. Giao diện gom selectors vào CẢ hai đường: gửi engine, và lưu ra đĩa.
+  const khoi = (ten) => {
+    const i = appjs.indexOf(`function ${ten}(`);
+    assert.ok(i > 0, `không tìm thấy ${ten}()`);
+    return appjs.slice(i, appjs.indexOf('\n}', i));
+  };
+  assert.ok(/s\.selectors\s*=/.test(khoi('collectSettings')),
+    'collectSettings() không gửi selectors — engine sẽ không bao giờ thấy selector bạn chỉ');
+  assert.ok(/s\.selectors\s*=/.test(khoi('collectForSave')),
+    'collectForSave() không lưu selectors — mở lại app là mất hết');
 });
 
 // ── Kết luận ───────────────────────────────────────────────────────────────

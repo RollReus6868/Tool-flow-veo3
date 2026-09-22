@@ -196,25 +196,143 @@ vừa soạn prompt vừa chỉnh cài đặt.
 
 ---
 
-## 0m. Bản 2.8.2 — tab chạy ngầm không thấy ảnh ("KHÔNG TÌM THẤY Thẻ video / ảnh")
+## 0m. Bản 2.8.2 — treo im lặng sau khi bấm Tạo, và mục Chẩn đoán nằm đó chết
 
-**Triệu chứng.** Bấm chạy, prompt được dán và bấm Tạo bình thường, nhưng vài
-giây sau mọi tab báo đỏ `KHÔNG TÌM THẤY "Thẻ video / ảnh"` và không bao giờ tải
-được ảnh về.
+Sáng 22/09/2026, 6 tab trên 3 tài khoản, 542 prompt chế độ ảnh. Nhật ký cho
+thấy mọi bước đều "thành công" mà **không một video/ảnh nào được tải về**, và
+tiến độ đứng yên tới lúc bấm Dừng. Hai lỗi khác nhau xếp lên nhau.
 
-**Nguyên nhân gốc.** Google đã đổi lưới kết quả của Flow sang kiểu "cuộn ảo"
-(`cdk-virtual-scroll-viewport`): trang chỉ vẽ số thẻ **vừa với khung nhìn**. App
-ẩn các tab chạy ngầm bằng cách thu chúng về kích thước **0×0**. Khung cao 0 thì
-Flow vẽ 0 thẻ, nên engine nhìn vào lưới trống — dù ảnh đã tạo xong trên máy chủ.
-Trước khi Google đổi, lưới vẽ đủ mọi thẻ bất kể kích thước nên cách ẩn cũ vẫn chạy.
+### Lỗi 1 — Google Flow đổi lưới thẻ kết quả
 
-**Sửa.** Tab ẩn giờ giữ nguyên kích thước thật (khung vùng trình duyệt gần nhất,
-hoặc 1280×800), chỉ tắt hiển thị. Engine không đổi một byte.
+Cả 6 tab đều báo:
 
-**Vì sao lần trước không bắt được.** Các trang giả lập dùng để kiểm thử vẽ đủ
-thẻ bất kể khung cao bao nhiêu, và không bài nào chạy tab ở trạng thái ẩn. Nay có
-`tests/luoi-ao-main.js`: trang giả lập lưới ảo, tab ẩn qua đúng `TabManager`
-thật. Chạy với bản 2.8.1 thì bài này đỏ (0 thẻ), bản 2.8.2 thì xanh.
+```
+🔧 KHÔNG TÌM THẤY "Thẻ video / ảnh" sau 3 lần thử
+```
+
+Engine dò thẻ kết quả bằng bốn lớp dự phòng, và **cả bốn đều trượt**:
+`flow-tile-container` → `flow-image-tile` / `flow-video-tile` →
+`[data-tile-id]` → `a[href*="/edit/workflow/"]`. Nghĩa là Google đã đổi hẳn
+cấu trúc lưới kết quả. Không dò được thẻ thì không biết ảnh đã xong chưa, nên
+engine đứng chờ mãi ở `⏳ Đang chờ thẻ video mới xuất hiện`.
+
+Đây là **chuyện sẽ còn lặp lại** — Google đổi giao diện Flow vài tháng một
+lần. Nên bản này không đi vá một selector rồi chờ lần sau, mà mở đường cho bạn
+**tự chỉ lại** (lỗi 3 dưới đây).
+
+### Lỗi 2 — phép đếm ảnh che kín lỗi 1, biến nó thành treo im lặng
+
+Dòng kiểm sau mỗi cú bấm Tạo, xuất hiện ở *mọi* prompt:
+
+```
+🔎 Verify: newTile=false, txtCleared=false(len=2421), newImg=true, newBatch=false
+```
+
+`newTile=false` là thẻ không dò được (lỗi 1). `txtCleared=false` là câu lệnh
+vẫn còn nguyên trong ô nhập. Đáng lẽ engine phải kết luận **cú bấm Tạo không
+vào**, báo lỗi và thử lại. Nhưng `newImg=true` đã cứu nó — và `newImg` **sai**.
+
+Nguyên nhân gốc: hai phép đếm ảnh dùng **hai bộ lọc khác nhau**.
+
+| Đếm ở đâu | Bộ lọc | Đếm cái gì |
+|---|---|---|
+| **Trước** khi bấm Tạo | `'[data-tile-id] img, a[href*="/edit/"] img'` | chỉ ảnh **nằm trong thẻ** |
+| **Sau** khi bấm Tạo | `'img, a[href*="/edit/"] img'` | **mọi** ảnh trên trang |
+
+So một số nhỏ với một số lớn thì `sau > trước` gần như **luôn đúng** — nó đếm
+cả logo, avatar, icon của trang. Nên engine kết luận `✅ Create accepted` cho
+mọi prompt, kể cả khi cú bấm trượt hoàn toàn, rồi đi chờ thẻ không bao giờ tới.
+
+Một lỗi đáng lẽ **báo rõ** đã bị biến thành **treo không một dòng lỗi**.
+
+Bộ lọc rộng ở chỗ đếm sau là cố ý ("Removed `[data-tile-id]` to work with new
+UI") — chỉ là chỗ đếm trước không được sửa theo. Bản 2.8.2 cho hai chỗ dùng
+**cùng một** bộ lọc, nên hiệu số lại có nghĩa.
+
+### Lỗi 3 — app dặn bạn bấm hai cái nút không tồn tại
+
+Câu báo lỗi của engine dặn:
+
+> *Mở Cài đặt → Chẩn đoán giao diện Flow: bấm "Chọn trên trang" để tự chỉ lại
+> phần tử này, hoặc "Tải báo cáo .txt" rồi gửi cho Claude để vá.*
+
+**Hai nút đó chưa bao giờ có trong app.** Mục Chẩn đoán chỉ có ba nút: Kiểm
+tra 6 phần tử / Xem tình trạng / Xoá ghi nhận. Bạn đọc câu đó, đi tìm, không
+thấy gì — và không có cách nào tự vá, cũng không có cách nào gửi bằng chứng đi.
+
+Tệ hơn: engine **đã mang sẵn đủ cơ chế** từ bản tiện ích, chỉ là bản desktop
+chưa nối vào. Ba mắt nối bị hở:
+
+| Engine có sẵn | Bản desktop trước 2.8.2 |
+|---|---|
+| Nhận `START_PICKING` để bật chế độ "bấm vào phần tử" | không ai gửi |
+| Gửi `PICK_RESULT` kèm selector vừa sinh ra | nhận về rồi **ném đi** |
+| Đọc `settings.selectors[key]`, **ưu tiên** trước selector mặc định | giao diện không hề gom khoá này |
+
+Cộng thêm hai chỗ nữa cũng hỏng ngầm:
+
+- Hàm vẽ kết quả tự kiểm đọc **sai hình dạng** dữ liệu engine trả về, nên vẽ
+  ra mấy dòng vô nghĩa kiểu `❌ report`, `❌ health` — không bao giờ chỉ ra
+  được phần tử nào vỡ.
+- Engine gửi `UI_BREAK` để báo "phần tử này vừa vỡ", `main.js` không có nhánh
+  xử lý nên trả về *"Action chưa hỗ trợ"*. App không biết gì; bạn chỉ thấy một
+  dòng đỏ trôi qua giữa hàng trăm dòng log khác.
+
+### Bản 2.8.2 có gì
+
+Mục **Cài đặt → Chẩn đoán giao diện Flow** giờ có, cho **từng** phần tử trong
+sáu phần tử then chốt:
+
+- **🎯 Chọn trên trang** — bấm, rồi bấm vào đúng phần tử đó trong cửa sổ Flow
+  (Esc để thôi). App nhớ selector và **áp ngay cho các tab đang mở**, không
+  phải chờ lần Bắt đầu sau, cũng không phải chờ bản cập nhật.
+- **Ô nhập selector** — ai biết CSS thì dán thẳng vào. Để trống = dùng mặc định.
+- **✕** — bỏ selector tự chỉ, quay về mặc định.
+- **📄 Tải báo cáo .txt** — xuất một file gồm *hai* nguồn: bản tự dò ngay lúc
+  xuất, **và** bản engine tự chụp đúng lúc nó trượt (kèm `outerHTML` của tới 12
+  phần tử ứng viên). Gửi nguyên file đó đi là đủ để viết selector mới. Trong
+  file không có thông tin đăng nhập nào — chỉ cấu trúc HTML của trang Flow.
+
+Engine báo vỡ thì mục Chẩn đoán **tự sáng đèn** và nói luôn phần tử nào, thay
+vì để dòng log trôi mất.
+
+> **Lưu ý:** nút **✕ Xoá ghi nhận** xoá luôn bản chụp mà engine tự lưu. Đang
+> gặp lỗi thì **bấm Tải báo cáo .txt trước**, đừng bấm Xoá ghi nhận.
+
+### Vì sao mấy lỗi này không bị bắt sớm hơn
+
+- **Lỗi 1 và 2 chỉ lộ khi Flow thật đổi giao diện.** Trang giả lập trong bộ
+  kiểm thử luôn có `flow-tile-container`, nên tầng 4 và tầng 7 vẫn xanh. Và
+  không có bài nào so **cùng một** bộ lọc ở hai đầu trước/sau.
+- **Lỗi 3 là loại lỗi bộ kiểm thử không được thiết kế để thấy.** Tầng giao
+  diện kiểm *app có đủ phần tử app cần* — chứ không kiểm *app có đủ thứ mà
+  engine HỨA với người dùng*. Câu dặn "bấm Chọn trên trang" nằm trong engine,
+  cái nút nằm trong app, và không ai đối chiếu hai bên.
+
+Bản này thêm ba bài kiểm thử để chuyện đó không tái diễn:
+
+1. **Hai phép đếm ảnh phải dùng cùng một selector** — so thẳng chuỗi ở ba chỗ
+   trong `flow-engine.js`. Đã phá thử: trả selector hẹp về là bài kiểm đỏ ngay.
+2. **Mọi action engine gửi đều phải có nhánh xử lý trong `main.js`** — quét
+   toàn bộ `flow-engine.js`, đối chiếu với các `case` bên `main.js`. Bài này
+   canh cả một *loại* lỗi, không phải một lỗi lẻ: `REGISTER_TAB` thiếu từng làm
+   ba tab ghi đè dự án của nhau, `UI_BREAK` thiếu làm app không biết giao diện
+   đã vỡ.
+3. **Đường tự chỉ selector phải nối đủ năm mắt** — có nút trong giao diện,
+   preload phơi đủ hàm và cho phép kênh sự kiện, `main.js` gửi `START_PICKING`
+   và đẩy `UPDATE_SETTINGS`, và `selectors` có mặt trong **cả** bộ gửi cho
+   engine **và** bộ lưu ra đĩa.
+
+### Chưa nghiệm thu được
+
+Selector mới cho lưới thẻ của Flow **vẫn chưa có** — cần bản chụp DOM thật từ
+máy đang gặp lỗi (nút **📄 Tải báo cáo .txt**, hoặc file
+`flow-studio-data.json` phần `veoUiDiagnostics`). Đường tự chỉ selector đã
+chạy đúng trên trang Flow **giả lập**, nhưng **chưa thử lần nào trên Flow
+thật** — thao tác bấm chọn phần tử và selector sinh ra còn phải kiểm trên máy
+người dùng.
+
+---
 
 ## 0l. Bản 2.8.0 — tự cập nhật, chọn model, và chuyện Lower Priority
 
@@ -1238,7 +1356,7 @@ src/main/
 src/inject/
   chrome-shim.js               GIẢ LẬP chrome.* — nhờ nó mà engine chạy lại nguyên vẹn
   main-world-helpers.js        trích nguyên văn từ background.js 1.10.0
-  flow-engine.js               = content-v2.js của 1.10.0, 6.430 dòng, KHÔNG SỬA MỘT BYTE
+  flow-engine.js               = content-v2.js của 1.10.0, 6.430 dòng — xem đính chính dưới
   flow-mode.js                 tự đổi chế độ Image <-> Video trên giao diện Flow
   flow-model.js                đọc / đổi model video trên giao diện Flow (2.8.0)
   flow-canh-bao.js             đọc câu "hoạt động bất thường" trên trang
@@ -1269,6 +1387,15 @@ tests/
                                (bật-tắt ở pointerdown hoặc click, tuỳ đời)
 reference/                     bản gốc của tiện ích, chỉ để đối chiếu — app không dùng
 ```
+
+> **Đính chính (2.8.2):** chỗ này và mục "Điểm mấu chốt" dưới đây từng ghi
+> `flow-engine.js` **KHÔNG SỬA MỘT BYTE** so với `content-v2.js` của tiện ích
+> 1.10.0. Từ 2.8.2 điều đó **không còn đúng tuyệt đối**: có **đúng một** chỗ
+> khác, là dòng đếm ảnh trước khi bấm Tạo (`_preClickImageCount`), vì chính nó
+> gây treo im lặng ngày 22/09/2026 — xem [mục 0m](#0m-bản-282--treo-im-lặng-sau-khi-bấm-tạo-và-mục-chẩn-đoán-nằm-đó-chết).
+> Chỗ khác đó có đánh dấu ngay trong code (`KHÁC content-v2.js`) và có bài
+> kiểm thử tĩnh canh (`tests/run.js`). Tinh thần cũ vẫn giữ: **không fork
+> engine để thêm tính năng** — tính năng mới đi bằng file tiêm riêng.
 
 ### Điểm mấu chốt: `chrome-shim.js`
 

@@ -580,7 +580,7 @@
 
 
 
-    <div class="card">
+    <div class="card" id="theChanDoan">
       <div class="card-head"><h3>Chẩn đoán giao diện Flow</h3></div>
       <p class="hint" style="margin-bottom:10px">
         App đọc giao diện web của Flow để biết bấm vào đâu. Google đổi giao diện là một số bước
@@ -589,9 +589,17 @@
       <div class="btnrow">
         <button class="btn" id="btnUiSelftest">🔬 Kiểm tra 6 phần tử then chốt</button>
         <button class="btn sm" id="btnUiHealth">📋 Xem tình trạng đã ghi nhận</button>
+        <button class="btn sm" id="btnUiReport">📄 Tải báo cáo .txt</button>
         <button class="btn sm danger" id="btnUiClear">✕ Xoá ghi nhận</button>
       </div>
+      <p class="hint" style="margin-top:8px">
+        Phần tử nào đỏ thì bấm <b>Chọn trên trang</b> ở dòng của nó, rồi bấm vào đúng phần tử đó
+        trong cửa sổ Flow (bấm <b>Esc</b> để thôi). App nhớ selector bạn chỉ và dùng nó
+        <b>ưu tiên</b> hơn selector mặc định, nên Google đổi giao diện là bạn tự vá được ngay,
+        không phải chờ bản cập nhật. Không chỉ được thì bấm <b>Tải báo cáo .txt</b> rồi gửi file đó đi.
+      </p>
       <div id="uiHealthBox" class="hint" style="margin-top:10px"></div>
+      <div id="uiSelectorBox" style="margin-top:10px"></div>
     </div>
 
     <div class="card" id="theCapNhat">

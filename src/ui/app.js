@@ -764,6 +764,13 @@ function collectSettings(epCheDo) {
   // bắt đầu coi mình là máy. Gửi kèm để nó luôn theo đúng ô người dùng vừa đặt.
   s.anToan = docAnToan();
   s.chonModel = docChonModel();
+
+  // ── selectors: khoá NÀY thì engine ĐỌC THẬT ────────────────────────────
+  //  resolveSelector(key) trong flow-engine.js đọc state.settings.selectors
+  //  và ưu tiên nó TRƯỚC hàm dò mặc định. Trước 2.8.2 giao diện không hề gom
+  //  khoá này, nên cơ chế tự vá của engine nằm đó chết — Google đổi giao diện
+  //  là phải chờ bản mới. Xem README mục 0a.
+  s.selectors = docSelectors();
   return s;
 }
 
@@ -781,6 +788,7 @@ function collectForSave() {
   s.runMode = (document.querySelector('input[name="runMode"]:checked') || {}).value || 'video';
   s.anToan  = docAnToan();
   s.chonModel = docChonModel();
+  s.selectors = docSelectors();
   return s;
 }
 
@@ -799,6 +807,16 @@ function applySettings(s) {
 
   datAnToan(s.anToan);
   datChonModel(s.chonModel);
+
+  // Selector tự chỉ: nạp lại rồi vẽ, để mở app lên là thấy ngay mình đã chỉ gì.
+  if (s.selectors && typeof s.selectors === 'object') {
+    uiSelectors = {};
+    for (const k in s.selectors) {
+      const v = String(s.selectors[k] || '').trim();
+      if (v) uiSelectors[k] = v;
+    }
+  }
+  if (typeof renderUiSelectors === 'function') renderUiSelectors();
 
   // ── Hai bộ tải về ─────────────────────────────────────────────────
   // Bản cũ lưu MỘT bộ khoá phẳng (downloadMode, renameMode…). File cài đặt
@@ -952,38 +970,231 @@ $('#btnImportSettings').addEventListener('click', async () => {
 });
 
 // ══════════════════════════════════════════════════════════ CHẨN ĐOÁN UI FLOW
+//
+//  ĐÂY LÀ MỤC ĐÃ HỎNG NGẦM TỪ ĐẦU. Hai chuyện riêng biệt:
+//
+//  1) renderUiHealth() cũ đọc sai hình dạng dữ liệu. Engine trả về
+//     RUN_UI_SELFTEST -> { ok, report:{ rows:[…] } } và
+//     GET_UI_HEALTH   -> { ok, health:[…], lastSelfTest }.
+//     Hàm cũ làm Object.entries() lên chính cái vỏ đó, nên vẽ ra mấy dòng
+//     vô nghĩa kiểu "❌ report", "❌ health" — không bao giờ chỉ ra được
+//     phần tử nào vỡ. Nay đọc đúng rows/health.
+//
+//  2) Không có nút "Chọn trên trang" lẫn "Tải báo cáo .txt", dù engine dặn
+//     người dùng đi bấm đúng hai nút đó khi nó trượt. Xem README mục 0a.
+//
+//  Danh sách dưới đây chỉ để vẽ khi CHƯA hỏi được engine. Nguồn sự thật là
+//  UI_TARGETS trong flow-engine.js — mọi lần engine trả lời thì lấy theo nó.
+const UI_PHAN_TU_MAC_DINH = [
+  { key: 'promptEditor', label: 'Ô nhập prompt' },
+  { key: 'createBtn',    label: 'Nút Tạo (mũi tên gửi)' },
+  { key: 'searchBox',    label: 'Ô tìm kiếm' },
+  { key: 'tile',         label: 'Thẻ video / ảnh' },
+  { key: 'downloadBtn',  label: 'Nút ⋮ trên thẻ' },
+  { key: 'settingsBtn',  label: 'Nút cài đặt mô hình (1x/2x)' }
+];
+
+// Selector người dùng tự chỉ. Engine đọc qua settings.selectors[key]
+// (resolveSelector) và ƯU TIÊN nó trước selector mặc định.
+let uiSelectors = {};
+let uiPhanTu = UI_PHAN_TU_MAC_DINH.slice();
+let uiDangChon = null;   // key đang chờ người dùng bấm trên trang Flow
+
+function docSelectors() {
+  const s = {};
+  for (const k in uiSelectors) {
+    const v = String(uiSelectors[k] || '').trim();
+    if (v) s[k] = v;
+  }
+  return s;
+}
 
 $('#btnUiSelftest').addEventListener('click', async () => {
   const box = $('#uiHealthBox');
   box.textContent = '⏳ Đang dò 6 phần tử then chốt trên trang Flow…';
-  const r = await window.flowApp.engine.uiSelftest();
-  renderUiHealth(r);
+  renderUiHealth(await window.flowApp.engine.uiSelftest());
 });
 $('#btnUiHealth').addEventListener('click', async () => {
   renderUiHealth(await window.flowApp.engine.uiHealth());
 });
 $('#btnUiClear').addEventListener('click', async () => {
-  await window.flowApp.engine.uiClear();
-  $('#uiHealthBox').textContent = 'Đã xoá ghi nhận.';
+  const r = await window.flowApp.engine.uiClear();
+  $('#uiHealthBox').textContent = (r && r.ok === false)
+    ? `❌ ${r.error || 'Chưa mở tab Flow nào'}`
+    : 'Đã xoá ghi nhận. (Selector bạn tự chỉ KHÔNG bị xoá.)';
 });
 
+$('#btnUiReport').addEventListener('click', async () => {
+  const box = $('#uiHealthBox');
+  box.textContent = '⏳ Đang dò lại giao diện và gom bản chụp để xuất báo cáo…';
+  const r = await window.flowApp.engine.uiReport();
+  if (!r || !r.ok) {
+    box.innerHTML = `<span style="color:#fca5a5">❌ ${escapeHtml((r && r.error) || 'Không xuất được báo cáo')}</span>`;
+    return;
+  }
+  box.innerHTML =
+    `✅ Đã lưu báo cáo: <code>${escapeHtml(r.duongDan)}</code><br>` +
+    `<button class="btn sm" id="btnMoBaoCao" style="margin-top:6px">📂 Mở thư mục chứa file</button>`;
+  const nut = document.getElementById('btnMoBaoCao');
+  if (nut) nut.addEventListener('click', () => window.flowApp.system.openPath(r.duongDan));
+});
+
+/** Vẽ kết quả tự kiểm / tình trạng, chấp nhận CẢ HAI hình dạng engine trả về. */
 function renderUiHealth(r) {
   const box = $('#uiHealthBox');
   if (!r || r.ok === false) {
     box.innerHTML = `<span style="color:#fca5a5">❌ ${escapeHtml((r && r.error) || 'Chưa mở tab Flow nào')}</span>`;
+    renderUiSelectors();
     return;
   }
-  const data = r.result || r.data || r;
-  if (!data || typeof data !== 'object') {
-    box.textContent = 'Engine chưa trả về dữ liệu — thử bấm "Kiểm tra 6 phần tử then chốt" trước.';
+
+  // RUN_UI_SELFTEST -> { ok, report:{ rows, tileCount, menu } }
+  // GET_UI_HEALTH   -> { ok, health:[…], lastSelfTest }
+  const rp = r.report || r.result || null;
+  const hang = Array.isArray(rp && rp.rows) ? rp.rows
+             : Array.isArray(r.health)      ? r.health
+             : null;
+
+  if (!hang) {
+    box.textContent = 'Engine chưa trả về dữ liệu — bấm "Kiểm tra 6 phần tử then chốt" trước.';
+    renderUiSelectors();
     return;
   }
-  const dong = Object.entries(data).map(([k, v]) => {
-    const ok = v === true || (v && (v.ok === true || v.found === true));
-    return `<div>${ok ? '✅' : '❌'} ${escapeHtml(k)}${v && v.hint ? ' — ' + escapeHtml(v.hint) : ''}</div>`;
+
+  // Có nhãn thật từ engine thì dùng luôn, khỏi lệch tên với danh sách mặc định.
+  const coNhan = hang.filter((h) => h && h.key && h.label);
+  if (coNhan.length) uiPhanTu = coNhan.map((h) => ({ key: h.key, label: h.label }));
+
+  const dong = hang.map((h) => {
+    // GET_UI_HEALTH không có cờ ok — nó có misses/okAt. Suy ra trạng thái.
+    const co = (typeof h.ok === 'boolean') ? h.ok : !((h.misses || 0) >= 3);
+    const bieu = h.skipped ? '⚪' : (co ? '✅' : '❌');
+    const phu = [];
+    if (h.skipped)            phu.push('chưa cần có (lưới trống)');
+    if (h.via)                phu.push(h.via === 'override' ? 'đang dùng selector bạn chỉ' : 'selector mặc định');
+    if (h.count)              phu.push(`khớp ${h.count}`);
+    if (typeof h.misses === 'number' && h.misses > 0) phu.push(`trượt ${h.misses} lần`);
+    if (!co && !h.skipped && Array.isArray(h.candidates) && h.candidates.length) {
+      phu.push(`${h.candidates.length} ứng viên đã ghi vào báo cáo`);
+    }
+    return `<div>${bieu} <b>${escapeHtml(h.label || h.key)}</b>` +
+           (phu.length ? ` <span style="opacity:.75">— ${escapeHtml(phu.join(' · '))}</span>` : '') +
+           `</div>`;
   });
-  box.innerHTML = dong.length ? dong.join('') : 'Không có dữ liệu.';
+
+  if (rp && typeof rp.tileCount === 'number') {
+    dong.push(`<div style="margin-top:6px;opacity:.75">Đang thấy ${rp.tileCount} thẻ trong lưới.</div>`);
+  }
+  if (rp && rp.menu && rp.menu.ok === false && rp.menu.reason) {
+    dong.push(`<div style="opacity:.75">Menu ⋮: ${escapeHtml(rp.menu.reason)}</div>`);
+  }
+  box.innerHTML = dong.join('');
+  renderUiSelectors();
 }
+
+/** Một dòng cho mỗi phần tử: nút chỉ trên trang + ô selector + nút xoá. */
+function renderUiSelectors() {
+  const box = $('#uiSelectorBox');
+  if (!box) return;
+  box.innerHTML = uiPhanTu.map(({ key, label }) => {
+    const val = escapeHtml(String(uiSelectors[key] || ''));
+    const dangCho = uiDangChon === key;
+    return `
+      <div style="padding:7px 0;border-top:1px solid rgba(255,255,255,.07)">
+        <div style="margin-bottom:5px">${escapeHtml(label)}
+          ${val ? '<span style="opacity:.7"> — đang dùng selector bạn chỉ</span>' : ''}</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="btn sm" style="flex:0 0 auto;white-space:nowrap"
+                  data-pick="${escapeHtml(key)}">
+            ${dangCho ? '👇 Đang chờ bạn bấm…' : '🎯 Chọn trên trang'}
+          </button>
+          <input type="text" data-sel="${escapeHtml(key)}" value="${val}"
+                 placeholder="để trống = dùng mặc định"
+                 style="flex:1 1 auto;min-width:0">
+          <button class="btn sm danger" style="flex:0 0 auto"
+                  data-clear="${escapeHtml(key)}" ${val ? '' : 'disabled'}
+                  title="Bỏ selector tự chỉ, quay về mặc định">✕</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  box.querySelectorAll('[data-pick]').forEach((b) => {
+    b.addEventListener('click', async () => {
+      const key = b.getAttribute('data-pick');
+      const r = await window.flowApp.engine.uiPick(key);
+      if (!r || r.ok === false) {
+        pushLog('error', `❌ ${(r && r.error) || 'Chưa mở tab Flow nào để chỉ phần tử'}`);
+        return;
+      }
+      uiDangChon = key;
+      renderUiSelectors();
+      // Phải cho người dùng THẤY trang Flow mới bấm được vào phần tử.
+      pushLog('info', '👇 Mở mục "Cửa sổ Flow" rồi bấm vào đúng phần tử cần chỉ (Esc để thôi).');
+      const navFlow = document.querySelector('[data-pane="browser"]');
+      if (navFlow) navFlow.click();
+    });
+  });
+
+  box.querySelectorAll('[data-sel]').forEach((inp) => {
+    inp.addEventListener('change', async () => {
+      const key = inp.getAttribute('data-sel');
+      uiSelectors[key] = inp.value.trim();
+      await luuVaDaySelectors();
+      renderUiSelectors();
+    });
+  });
+
+  box.querySelectorAll('[data-clear]').forEach((b) => {
+    b.addEventListener('click', async () => {
+      delete uiSelectors[b.getAttribute('data-clear')];
+      await luuVaDaySelectors();
+      renderUiSelectors();
+    });
+  });
+}
+
+/** Lưu ra đĩa VÀ đẩy xuống engine ngay — không chờ lần Bắt đầu sau. */
+async function luuVaDaySelectors() {
+  scheduleSave();
+  const r = await window.flowApp.engine.pushSelectors(docSelectors());
+  if (r && r.ok) pushLog('success', `✅ Đã áp selector cho ${r.soTab} tab đang mở.`);
+  else pushLog('info', 'ℹ️ Đã lưu selector — sẽ áp khi mở tab Flow và bấm Bắt đầu.');
+}
+
+// Engine báo một phần tử vừa vỡ — cho mục Chẩn đoán tự sáng đèn thay vì để
+// dòng log đỏ trôi mất giữa hàng trăm dòng khác.
+window.flowApp.on('ui-break', (d) => {
+  const key = d && d.data && d.data.key;
+  const nhan = (d && d.data && d.data.label) || key || 'một phần tử';
+  const box = $('#uiHealthBox');
+  if (box) {
+    box.innerHTML =
+      `<span style="color:#fca5a5">❌ Engine không còn dò được <b>${escapeHtml(nhan)}</b>` +
+      `${d && d.data && d.data.misses ? ` (trượt ${d.data.misses} lần)` : ''} — ` +
+      `Google Flow gần như chắc đã đổi giao diện ở bước này.</span><br>` +
+      `<span>Bấm <b>Chọn trên trang</b> ở dòng "${escapeHtml(nhan)}" bên dưới để tự chỉ lại, ` +
+      `hoặc <b>Tải báo cáo .txt</b> rồi gửi file đó đi.</span>`;
+  }
+  renderUiSelectors();
+});
+
+window.flowApp.on('ui-pick', async (d) => {
+  if (!d || d.action === 'PICK_CANCELLED' || !d.data) {
+    uiDangChon = null;
+    renderUiSelectors();
+    return;
+  }
+  const { targetType, selector, matches } = d.data;
+  if (targetType && selector) {
+    uiSelectors[targetType] = selector;
+    uiDangChon = null;
+    await luuVaDaySelectors();
+    renderUiSelectors();
+    pushLog('success',
+      `🎯 Đã nhớ selector cho "${targetType}": ${selector} (khớp ${matches || 0} phần tử). ` +
+      `Bấm "Kiểm tra 6 phần tử then chốt" để xem đã xanh chưa.`);
+  }
+});
 
 // ══════════════════════════════════════════════════════════ DỰ ÁN
 

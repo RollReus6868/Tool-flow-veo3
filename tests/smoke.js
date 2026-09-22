@@ -323,6 +323,69 @@ async function run(mainWindow, app) {
   }
   await wc.executeJavaScript(`veCapNhat({ trangThai: 'chua-kiem', phienBanHienTai: '2.8.0' }); true`);
 
+  // ── 3e4. Chẩn đoán giao diện Flow: tự chỉ lại selector (2.8.2) ────────
+  //
+  //  Mục này TỪNG hỏng ngầm: engine dặn người dùng bấm "Chọn trên trang" và
+  //  "Tải báo cáo .txt", mà hai nút đó không tồn tại; còn settings.selectors
+  //  — khoá engine đọc để ưu tiên selector người dùng chỉ — không hề được
+  //  giao diện gom. Bài này canh cả ba: có nút, vẽ đủ dòng, và selector đi
+  //  ĐƯỢC vào đúng khoá engine đọc.
+  const cd = await wc.executeJavaScript(`
+    (() => {
+      try { renderUiSelectors(); } catch (e) { return { loi: String(e && e.stack) }; }
+      const box = document.querySelector('#uiSelectorBox');
+      const dong  = box.querySelectorAll('[data-pick]').length;
+      const oNhap = box.querySelectorAll('[data-sel]').length;
+
+      // Gõ selector cho "tile" đúng như người dùng dán tay vào ô.
+      const o = box.querySelector('[data-sel="tile"]');
+      o.value = 'div[data-x="tile-moi"]';
+      o.dispatchEvent(new Event('change'));
+
+      return {
+        dong, oNhap,
+        coNutBaoCao: !!document.querySelector('#btnUiReport'),
+        sel: window.__collectSettings().selectors
+      };
+    })()
+  `);
+  if (cd.loi) failures.push('renderUiSelectors ném lỗi: ' + cd.loi);
+  else if (cd.dong !== 6 || cd.oNhap !== 6) {
+    failures.push(`Mục Chẩn đoán vẽ thiếu dòng: ${cd.dong} nút chọn / ${cd.oNhap} ô nhập (phải 6/6)`);
+  } else if (!cd.coNutBaoCao) {
+    failures.push('Thiếu nút "Tải báo cáo .txt" — engine dặn người dùng bấm đúng nút này');
+  } else if (!cd.sel || cd.sel.tile !== 'div[data-x="tile-moi"]') {
+    failures.push('Selector tự chỉ KHÔNG vào settings.selectors: ' + JSON.stringify(cd.sel));
+  } else note('Chẩn đoán: 6 dòng chọn phần tử, selector tự chỉ vào đúng settings.selectors');
+
+  // Engine báo vỡ -> đi trọn đường IPC thật (main -> preload -> app) và mục
+  // Chẩn đoán phải tự sáng đèn, chứ không để dòng log đỏ trôi mất.
+  wc.send('ui:ui-break', { tabId: 'tab1', data: { key: 'tile', label: 'Thẻ video / ảnh', misses: 3 } });
+  await wait(300);
+  const vo = await wc.executeJavaScript(`
+    (() => {
+      document.querySelector('#theChanDoan').scrollIntoView({ block: 'center' });
+      return document.querySelector('#uiHealthBox').textContent;
+    })()
+  `);
+  if (!/Thẻ video \/ ảnh/.test(vo) || !/Chọn trên trang/.test(vo)) {
+    failures.push('Sự kiện ui-break không vẽ được cảnh báo: ' + JSON.stringify(vo.slice(0, 120)));
+  } else note('Engine báo vỡ giao diện thì mục Chẩn đoán tự sáng đèn');
+  await wait(400);
+  {
+    const img = await wc.capturePage();
+    fs.writeFileSync(path.join(SHOT_DIR, 'run-chan-doan.png'), img.toPNG());
+    note('Đã chụp run-chan-doan.png');
+  }
+  // Trả ô selector về trống để các bước sau chạy như bản cũ.
+  await wc.executeJavaScript(`
+    (() => {
+      const o = document.querySelector('#uiSelectorBox [data-sel="tile"]');
+      if (o) { o.value = ''; o.dispatchEvent(new Event('change')); }
+      return true;
+    })()
+  `);
+
   // ── 3f. Sinh mã ảnh cho kho Flow ─────────────────────────────────────
   const maAnh = await wc.executeJavaScript(`
     (() => {
