@@ -1157,6 +1157,17 @@ test('tab ẩn KHÔNG bị thu về 0×0 (lưới ảo của Flow sẽ vẽ 0 th
   assert.ok(!/width:\s*0/.test(ab), 'applyBounds lại đặt khung 0×0 cho tab');
 });
 
+test('kiểm trước mẻ: cả hai chỗ giao mẻ và đường đọc kho sau F5 đều đi qua bộ lọc selector', () => {
+  const m = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  const giao = (m.match(/dispatch\([^)]*buildStartMessage\(/g) || []).length;
+  const kiem = (m.match(/kiemTruocKhiChay\(tab\.view\.webContents/g) || []).length;
+  assert.ok(giao >= 2 && kiem === giao, `có ${giao} chỗ giao mẻ nhưng ${kiem} chỗ kiểm`);
+  assert.ok(/case 'get':\s*return locVeoSettings\(store\.get\(arg\)\)/.test(m), 'flow:storage get chưa lọc selector đã bỏ');
+  const { moTaTaiVe } = require('../src/main/kiem-truoc');
+  assert.strictEqual(moTaTaiVe({ runMode: 'image', autoDownload: false, downloadMode: 'none' }).muc, 'warning');
+  assert.strictEqual(moTaTaiVe({ runMode: 'video', autoDownload: true, downloadMode: 'single' }).muc, 'info');
+});
+
 test('model: tiêm flow-model.js SAU flow-mode.js', () => {
   const t = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'tabs.js'), 'utf8');
   const a = t.indexOf("['trình đổi chế độ'"), b = t.indexOf("['trình chọn model'");

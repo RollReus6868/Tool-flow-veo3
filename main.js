@@ -16,6 +16,7 @@ const { Store } = require('./src/main/store');
 const { TabManager, FLOW_URL } = require('./src/main/tabs');
 const { DownloadManager, SKIP } = require('./src/main/downloads');
 const { pastePrompt, typeIntoFocused, ensureDebugger, bamChuotThat } = require('./src/main/paste');
+const { kiemTruocKhiChay, locVeoSettings } = require('./src/main/kiem-truoc');
 const { buildJobs, splitJobs, buildStartMessage, planRun, planRunJobs, buildImageNames,
         buildI2vNames, invalidI2vNames, buildI2vPrompts,
         tenAnhTheoRename, caiDatChuoiVideo } = require('./src/main/jobs');
@@ -659,7 +660,9 @@ async function chayTiepChuoi(tab) {
   }
 
   const jobs = prompts.map((text, i) => ({ index: i + 1, text }));
-  const caiDatTab = await chuanBiModel(tab, settings);
+  // Kiểm selector người dùng chỉ + ghi ra mẻ video sẽ tải về thế nào (README 0p).
+  const caiDatTab = await kiemTruocKhiChay(tab.view.webContents, await chuanBiModel(tab, settings),
+    (lvl, msg) => logToUi(lvl, `[${tab.id}] ${msg}`, tab.id));
   await tabManager.dispatch(tab.id, buildStartMessage(prompts, jobs, caiDatTab));
 }
 
@@ -1128,7 +1131,8 @@ function registerIpc() {
 
   ipcMain.handle('flow:storage', async (_event, { op, arg }) => {
     switch (op) {
-      case 'get':    return store.get(arg);
+      // Lọc selector sai đã bị bỏ trước mẻ — engine đọc lại chỗ này sau mỗi F5.
+      case 'get':    return locVeoSettings(store.get(arg));
       case 'set':    return store.set(arg) && undefined;
       case 'remove': return store.remove(arg) && undefined;
       case 'clear':  return store.clear() && undefined;
@@ -1601,7 +1605,9 @@ function registerIpc() {
       // Đặt đúng chế độ Image/Video trên trang Flow trước khi giao việc.
       if (settings.runMode) await datCheDo(tab, settings.runMode);
       // Kế hoạch model (mẻ video) — có thể ép giãn cách tối thiểu 1 giây.
-      const caiDatTab = await chuanBiModel(tab, settings);
+      // Kiểm selector người dùng chỉ + ghi ra mẻ này sẽ tải về thế nào (README 0p).
+      const caiDatTab = await kiemTruocKhiChay(tab.view.webContents, await chuanBiModel(tab, settings),
+        (lvl, msg) => logToUi(lvl, `[${tabId}] ${msg}`, tabId));
 
       const r = await tabManager.dispatch(tabId, buildStartMessage(prompts, part, caiDatTab));
       tab.busy = true;            // đánh dấu ngay, không chờ engine báo

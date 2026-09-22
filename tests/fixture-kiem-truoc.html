@@ -1,0 +1,15 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Flow giả — kiểm selector</title></head><body>
+<!-- Cùng khung với Flow thật 22/09/2026 (người dùng gửi kiểm kê DOM). -->
+<flow-navigation-header><button aria-label="More options">⋮</button></flow-navigation-header>
+<mat-sidenav><mat-list-item>Dự án 1</mat-list-item><mat-list-item>Dự án 2</mat-list-item></mat-sidenav>
+<cdk-virtual-scroll-viewport id="luoi">
+  <flow-grid-tile-container><flow-tile-container><flow-video-tile>
+    <video src=""></video><button aria-label="More options">⋮</button>
+  </flow-video-tile></flow-tile-container></flow-grid-tile-container>
+</cdk-virtual-scroll-viewport>
+<flow-prompt-box><flow-base-prompt-box>
+  <div class="ProseMirror" contenteditable="true"></div>
+  <span class="settings-summary">Veo 3.1 - Lite · 16:9 · x1</span>
+</flow-base-prompt-box></flow-prompt-box>
+<script>window.__luoiTrong = () => { document.getElementById('luoi').innerHTML = ''; };</script>
+</body></html>

@@ -1,4 +1,4 @@
-# Flow Automation Studio 2.8.5
+# Flow Automation Studio 2.8.6
 
 Tool desktop tự động hoá Google Flow. Bản chuyển từ tiện ích Chrome
 **Flow Automation Local 1.10.0** sang ứng dụng chạy thẳng trên máy.
@@ -195,6 +195,43 @@ vừa soạn prompt vừa chỉnh cài đặt.
 
 
 ---
+
+## 0p. Bản 2.8.6 — tạo được nhưng không tải về
+
+**Triệu chứng (nhật ký 11:58 → 12:05 ngày 22/09).** Bấm Tạo đã ăn (2.8.5), ảnh
+và video đều tạo xong, nhưng không có file nào về máy:
+
+- Video: `Đã bốc 1 thẻ từ bộ lọc Search!` rồi ngay sau đó
+  `Video 1/1 bị lỗi từ Google (Không thể tạo video). Đã skip.`
+- Ảnh: không có lấy một dòng `Bắt đầu tải tệp`.
+
+**Nguyên nhân gốc — video.** Video không hề lỗi. Ở mục Chẩn đoán, dòng "Thẻ video
+/ ảnh" đã được "Chọn trên trang" trúng `span.settings-summary`, là dòng chữ tóm
+tắt model nằm cạnh ô nhập. Engine luôn ưu tiên selector người dùng chỉ, nên khi
+lọc tìm thẻ để tải, nó bốc đúng cái span đó, không thấy `<video>` bên trong và
+kết luận "Google tạo hỏng". Mục Chẩn đoán vẫn hiện ✅ vì ✅ chỉ nghĩa là "selector
+khớp một thứ gì đó", không phải "khớp đúng thứ".
+
+**Nguyên nhân gốc — ảnh.** Engine chỉ tải ảnh khi bộ "Tải về — Ảnh" khác "Không
+tự tải". Nhật ký trước đây không ghi bộ đó đang đặt gì, nên không ai biết đó là
+lý do. Nhật ký 22/09 khớp đúng với trường hợp "Không tự tải": không tải ngay,
+không kiểm cuối, chỉ F5 để lưu tên.
+
+**Sửa.**
+- Trước mỗi mẻ (cả mẻ video nối tiếp), app hỏi trang Flow: selector người dùng
+  chỉ cho "Thẻ video / ảnh" và "Nút ⋮ trên thẻ" có trỏ vào thứ trông giống thẻ
+  không. Rõ ràng sai (nằm trong ô nhập / thanh bên / đầu trang, hoặc không chứa
+  ảnh/video, hoặc sai cú pháp) thì **bỏ selector đó**, dùng mặc định và ghi cảnh
+  báo vào nhật ký. Lưới đang trống, không phán được thì giữ nguyên.
+- Bỏ luôn ở đường engine đọc lại cài đặt sau mỗi lần F5, nếu không selector sai
+  quay lại ngay sau F5.
+- Đầu mỗi mẻ, nhật ký ghi rõ mẻ này tải về thế nào. Nếu là "Không tự tải" thì ghi
+  cảnh báo kèm chỗ đổi.
+
+**Vì sao lần trước không bắt được.** Chưa bài kiểm nào đặt một selector người
+dùng *sai* rồi chạy tiếp. Nay có `tests/kiem-truoc-main.js`: trang giả cùng khung
+Flow thật (ô nhập có `span.settings-summary`, thanh bên có `mat-list-item`, đầu
+trang có nút "More options"), kiểm từng selector sai lẫn đúng.
 
 ## 0o. Bản 2.8.5 — Flow chỉ nhận cú bấm THẬT
 
