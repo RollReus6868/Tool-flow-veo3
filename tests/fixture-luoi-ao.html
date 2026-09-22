@@ -1,0 +1,16 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Flow giả — lưới ảo</title></head>
+<body style="margin:0">
+<!-- Mô phỏng lưới kết quả mới của Flow (cdk-virtual-scroll-viewport): chỉ vẽ
+     số thẻ vừa khung nhìn. Khung cao 0 thì vẽ 0 thẻ. -->
+<cdk-virtual-scroll-viewport id="vp" style="display:block;height:100vh;overflow:auto"></cdk-virtual-scroll-viewport>
+<script>
+  const TONG = 12;
+  function ve() {
+    const h = document.getElementById('vp').clientHeight;
+    const n = Math.min(TONG, Math.ceil(h / 200));
+    document.getElementById('vp').innerHTML = Array.from({ length: n }, (_, i) =>
+      `<flow-grid-tile-container><flow-tile-container style="display:block;height:200px"><flow-image-tile><img data-media-id="m${i}" style="width:180px;height:180px"></flow-image-tile></flow-tile-container></flow-grid-tile-container>`).join('');
+  }
+  ve();
+  new ResizeObserver(ve).observe(document.getElementById('vp'));
+</script></body></html>

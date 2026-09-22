@@ -24,6 +24,19 @@ const FLOW_HOST_RE = process.env.FLOW_TEST_HOST
   ? new RegExp(process.env.FLOW_TEST_HOST, 'i')
   : /^https?:\/\/(labs\.google|flow\.google\.com)/i;
 
+/**
+ * Kích thước cho MỌI tab (hiện hay ẩn). Vùng hiển thị chưa có / bị thu nhỏ
+ * (người dùng đang ở màn điều khiển) thì dùng khung đẹp gần nhất, hoặc
+ * 1280×800 — không bao giờ trả khung 0×0.
+ */
+const KHUNG_MAC_DINH = { x: 0, y: 0, width: 1280, height: 800 };
+function khungChoTab(pane, khungCuoi) {
+  const dung = (b) => b && b.width >= 400 && b.height >= 300;
+  if (dung(pane)) return { x: pane.x | 0, y: pane.y | 0, width: pane.width | 0, height: pane.height | 0 };
+  if (dung(khungCuoi)) return khungCuoi;
+  return { ...KHUNG_MAC_DINH };
+}
+
 class TabManager {
   constructor({ mainWindow, session, accounts, preloadPath, log, onTabsChanged }) {
     this.mainWindow = mainWindow;
@@ -39,6 +52,7 @@ class TabManager {
     this.seq = 0;
     this.paneBounds = { x: 0, y: 0, width: 0, height: 0 };
     this.paneVisible = false;
+    this.khungCuoi = null;      // khung đẹp gần nhất, dùng cho tab ẩn
 
     // Mã nguồn tiêm vào trang, đọc một lần lúc khởi động.
     const injectDir = path.join(__dirname, '..', 'inject');
@@ -420,14 +434,18 @@ try {
   }
 
   applyBounds() {
-    const hidden = { x: 0, y: 0, width: 0, height: 0 };
+    const khung = khungChoTab(this.paneBounds, this.khungCuoi);
+    this.khungCuoi = khung;
     for (const tab of this.tabs) {
       const show = this.paneVisible && tab.id === this.activeId;
-      try {
-        tab.view.setBounds(show ? this.paneBounds : hidden);
-        tab.view.setVisible(show);
-      } catch (_) {
-        // setVisible chưa có ở vài bản Electron cũ — bounds 0 cũng đủ ẩn.
+      // Tab ẨN vẫn giữ NGUYÊN KÍCH THƯỚC THẬT, chỉ tắt hiển thị. KHÔNG thu về
+      // 0×0: lưới kết quả mới của Flow (cdk-virtual-scroll-viewport) chỉ vẽ số
+      // thẻ vừa khung nhìn — khung cao 0 thì vẽ 0 thẻ, engine báo "KHÔNG TÌM
+      // THẤY Thẻ video / ảnh" và không bao giờ thấy ảnh xong để tải về.
+      try { tab.view.setBounds(khung); } catch (_) { /* view đã huỷ */ }
+      try { tab.view.setVisible(show); } catch (_) {
+        // Electron cũ không có setVisible: đẩy ra ngoài màn hình, giữ kích thước.
+        try { if (!show) tab.view.setBounds({ ...khung, x: -20000, y: -20000 }); } catch (_) {}
       }
     }
   }
@@ -482,4 +500,4 @@ try {
   }
 }
 
-module.exports = { TabManager, FLOW_URL, FLOW_HOST_RE };
+module.exports = { TabManager, FLOW_URL, FLOW_HOST_RE, khungChoTab };

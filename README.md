@@ -1,4 +1,4 @@
-# Flow Automation Studio 2.8.0
+# Flow Automation Studio 2.8.2
 
 Tool desktop tự động hoá Google Flow. Bản chuyển từ tiện ích Chrome
 **Flow Automation Local 1.10.0** sang ứng dụng chạy thẳng trên máy.
@@ -195,6 +195,26 @@ vừa soạn prompt vừa chỉnh cài đặt.
 
 
 ---
+
+## 0m. Bản 2.8.2 — tab chạy ngầm không thấy ảnh ("KHÔNG TÌM THẤY Thẻ video / ảnh")
+
+**Triệu chứng.** Bấm chạy, prompt được dán và bấm Tạo bình thường, nhưng vài
+giây sau mọi tab báo đỏ `KHÔNG TÌM THẤY "Thẻ video / ảnh"` và không bao giờ tải
+được ảnh về.
+
+**Nguyên nhân gốc.** Google đã đổi lưới kết quả của Flow sang kiểu "cuộn ảo"
+(`cdk-virtual-scroll-viewport`): trang chỉ vẽ số thẻ **vừa với khung nhìn**. App
+ẩn các tab chạy ngầm bằng cách thu chúng về kích thước **0×0**. Khung cao 0 thì
+Flow vẽ 0 thẻ, nên engine nhìn vào lưới trống — dù ảnh đã tạo xong trên máy chủ.
+Trước khi Google đổi, lưới vẽ đủ mọi thẻ bất kể kích thước nên cách ẩn cũ vẫn chạy.
+
+**Sửa.** Tab ẩn giờ giữ nguyên kích thước thật (khung vùng trình duyệt gần nhất,
+hoặc 1280×800), chỉ tắt hiển thị. Engine không đổi một byte.
+
+**Vì sao lần trước không bắt được.** Các trang giả lập dùng để kiểm thử vẽ đủ
+thẻ bất kể khung cao bao nhiêu, và không bài nào chạy tab ở trạng thái ẩn. Nay có
+`tests/luoi-ao-main.js`: trang giả lập lưới ảo, tab ẩn qua đúng `TabManager`
+thật. Chạy với bản 2.8.1 thì bài này đỏ (0 thẻ), bản 2.8.2 thì xanh.
 
 ## 0l. Bản 2.8.0 — tự cập nhật, chọn model, và chuyện Lower Priority
 

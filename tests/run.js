@@ -1139,6 +1139,19 @@ test('model: nối dây trong main.js đủ các chỗ', () => {
   assert.ok(/if \(tab\.busy\) return \{ ok: false/.test(lay("'app:tabs:listModels'")), 'đọc model lúc tab đang chạy');
 });
 
+test('tab ẩn KHÔNG bị thu về 0×0 (lưới ảo của Flow sẽ vẽ 0 thẻ)', () => {
+  const { khungChoTab } = require('../src/main/tabs.js');
+  const z = { x: 0, y: 0, width: 0, height: 0 };
+  const k1 = khungChoTab(z, null);
+  assert.ok(k1.width >= 400 && k1.height >= 300, 'chưa có vùng hiển thị vẫn phải có khung thật');
+  assert.deepStrictEqual(khungChoTab({ x: 300, y: 60, width: 1000, height: 700 }, null), { x: 300, y: 60, width: 1000, height: 700 });
+  const cuoi = { x: 300, y: 60, width: 1000, height: 700 };
+  assert.deepStrictEqual(khungChoTab(z, cuoi), cuoi, 'vùng hiển thị bị ẩn thì giữ khung đẹp gần nhất');
+  const t = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'tabs.js'), 'utf8');
+  const ab = t.slice(t.indexOf('  applyBounds() {'), t.indexOf('  async reload('));
+  assert.ok(!/width:\s*0/.test(ab), 'applyBounds lại đặt khung 0×0 cho tab');
+});
+
 test('model: tiêm flow-model.js SAU flow-mode.js', () => {
   const t = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'tabs.js'), 'utf8');
   const a = t.indexOf("['trình đổi chế độ'"), b = t.indexOf("['trình chọn model'");
