@@ -11,6 +11,20 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+// Đọc mã nguồn để soi tĩnh. GitHub Actions trên Windows checkout ra CRLF
+// (core.autocrlf), nên cắt thân hàm theo '\n}\n' sẽ trượt: indexOf trả -1 và
+// slice lấy tới gần hết file — bài kiểm "không được có X trong hàm" đỏ oan,
+// bài "phải có X" xanh oan. Luôn chuẩn hoá về LF trước khi cắt.
+const docNguon = (...p) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf8').replace(/\r\n/g, '\n');
+/** Thân hàm bắt đầu bằng `dau`, tới dấu `}` đóng ở đầu dòng. Không thấy thì báo lỗi, không đoán. */
+function thanHam(m, dau) {
+  const i = m.indexOf(dau);
+  if (i < 0) return '';
+  const j = m.indexOf('\n}\n', i);
+  if (j < 0) throw new Error(`không tìm thấy cuối hàm "${dau}" — mã nguồn chưa chuẩn hoá xuống dòng?`);
+  return m.slice(i, j);
+}
+
 const {
   deaccentVi, normalizeForCompare, splitExtension,
   sanitizeDownloadPath, sanitizeSubfolder
@@ -1118,14 +1132,14 @@ test('model: tránh Lower Priority tăng dần 30 → 60 → 120 → trần 240 
 });
 
 test('model: nối dây trong main.js đủ các chỗ', () => {
-  const m = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  const m = docNguon('main.js');
   const lay = (dau) => { const i = m.indexOf(dau); return i < 0 ? '' : m.slice(i, i + 2500); };
   // 1. Đổi model trong lượt xin bấm Tạo — lúc engine đứng chờ.
   assert.ok(/modelChoPrompt/.test(lay("case 'ACQUIRE_CREATE_SLOT'")), 'ACQUIRE_CREATE_SLOT chưa chọn model');
   // 2. Engine chỉ xin lượt khi giãn cách > 0 → phải ép tối thiểu 1 giây.
   // Soi TRỌN thân hàm, không phải 2.500 ký tự đầu: bước kiểm danh sách model
   // đầu mẻ (2.8.7) làm hàm dài ra và dòng ép giãn cách rơi ra ngoài cửa sổ cũ.
-  const thanChuanBi = (() => { const i = m.indexOf('async function chuanBiModel'); return m.slice(i, m.indexOf('\n}\n', i)); })();
+  const thanChuanBi = thanHam(m, 'async function chuanBiModel');
   assert.ok(/multiTabStagger:\s*Math\.max\(1/.test(thanChuanBi), 'chưa ép giãn cách ≥ 1 giây');
   // 3. Cả hai đường giao việc (bấm Bắt đầu, và mẻ video nối sau ảnh).
   assert.ok(/chuanBiModel\(tab, settings\)[\s\S]{0,200}buildStartMessage\(prompts, part, caiDatTab\)/.test(m),
@@ -1595,8 +1609,8 @@ test('model: gợi ý mặc định khớp hai bên và không còn Lower Priori
 });
 
 test('model: đầu mẻ kiểm danh sách thật, prompt đầu luôn xác nhận model', () => {
-  const m = fs.readFileSync(path.join(GOC, 'main.js'), 'utf8');
-  const than = (dau) => { const i = m.indexOf(dau); return i < 0 ? '' : m.slice(i, m.indexOf('\n}\n', i)); };
+  const m = docNguon('main.js');
+  const than = (dau) => thanHam(m, dau);
 
   const cb = than('async function chuanBiModel');
   assert.ok(/__flowListModels/.test(cb) && /locTheoDanhSach/.test(cb),
@@ -1612,17 +1626,32 @@ test('model: đầu mẻ kiểm danh sách thật, prompt đầu luôn xác nh�
     'prompt đầu mẻ chưa bật xác nhận model thành lời');
 });
 
+// ── 2.8.7a: soi tĩnh phải ra cùng kết quả trên checkout CRLF (Windows CI) ──
+test('soi tĩnh: cắt thân hàm như nhau dù file xuống dòng CRLF', () => {
+  const lf = docNguon('main.js');
+  const crlf = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8').replace(/\r?\n/g, '\r\n');
+  const chuan = crlf.replace(/\r\n/g, '\n');
+  for (const dau of ['async function ghiLyDoTheLoi', 'async function chuanBiModel', 'async function datModel']) {
+    const a = thanHam(lf, dau), b = thanHam(chuan, dau);
+    assert.ok(a && a.length < 20000, `thân "${dau}" cắt sai (dài ${a.length})`);
+    assert.strictEqual(a, b, `thân "${dau}" khác nhau giữa LF và CRLF`);
+  }
+  assert.throws(() => thanHam(crlf, 'async function ghiLyDoTheLoi'), /cuối hàm/,
+    'cắt trên CRLF thô phải báo lỗi, không được lặng lẽ lấy tới cuối file');
+});
+
 // ── 2.8.7: ghi lý do Flow viết trên thẻ lỗi ───────────────────────────────
 test('thẻ lỗi: đọc chữ Flow ghi trên thẻ và ghi vào nhật ký', () => {
-  const m = fs.readFileSync(path.join(GOC, 'main.js'), 'utf8');
-  const cb = fs.readFileSync(path.join(GOC, 'src', 'inject', 'flow-canh-bao.js'), 'utf8');
+  const m = docNguon('main.js');
+  const cb = docNguon('src', 'inject', 'flow-canh-bao.js');
   assert.ok(/window\.__flowDocLyDoTheLoi = function/.test(cb), 'flow-canh-bao.js chưa phơi __flowDocLyDoTheLoi');
   assert.ok(/flow-error-tile/.test(cb), 'chưa dò thẻ flow-error-tile');
   assert.ok(/async function ghiLyDoTheLoi/.test(m), 'main.js thiếu ghiLyDoTheLoi');
   // Gọi từ UPDATE_TABLE_DATA và KHÔNG phụ thuộc chế độ an toàn.
   const khoi = m.slice(m.indexOf("case 'UPDATE_TABLE_DATA'"), m.indexOf("case 'UPDATE_PROGRESS'"));
   assert.ok(/ghiLyDoTheLoi\(tab, hangs\)/.test(khoi), 'UPDATE_TABLE_DATA chưa gọi ghiLyDoTheLoi');
-  const g = m.slice(m.indexOf('async function ghiLyDoTheLoi'), m.indexOf('\n}\n', m.indexOf('async function ghiLyDoTheLoi')));
+  const g = thanHam(m, 'async function ghiLyDoTheLoi');
+  assert.ok(g, 'không cắt được thân ghiLyDoTheLoi');
   assert.ok(!/caiDatAnToan\.bat/.test(g), 'đọc lý do thẻ lỗi không được phụ thuộc chế độ an toàn');
   assert.ok(/_lyDoDaGhi/.test(g), 'phải lọc trùng — lưới còn thẻ lỗi cũ thì câu đó lặp mãi');
 });

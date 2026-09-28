@@ -244,6 +244,14 @@ thêm mục 8 (kế hoạch cũ gặp Flow mới) và mục 9 (dòng xác nhận
 **Chưa nghiệm thu được.** Đổi model trên Flow thật; chữ đọc từ thẻ lỗi trên Flow
 thật (mới thử trên trang giả).
 
+**Sửa thêm: bước "Kiem thu logic" trên Windows đỏ oan.** Máy build Windows của
+GitHub lấy mã nguồn về với xuống dòng CRLF. Ba bài soi tĩnh cắt thân hàm theo
+`\n}\n`, trên CRLF không tìm thấy nên cắt tới gần hết file: một bài đỏ oan
+("không được phụ thuộc chế độ an toàn" — thấy chữ đó ở hàm khác), hai bài xanh
+oan. Nay `tests/run.js` chuẩn hoá về LF trước khi cắt (`docNguon`, `thanHam`),
+không tìm thấy cuối hàm thì báo lỗi chứ không đoán, và có bài kiểm chạy lại trên
+bản CRLF. App không đổi gì.
+
 ## 0p. Bản 2.8.6 — tạo được nhưng không tải về
 
 **Triệu chứng (nhật ký 11:58 → 12:05 ngày 22/09).** Bấm Tạo đã ăn (2.8.5), ảnh
