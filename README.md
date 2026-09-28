@@ -1,4 +1,4 @@
-# Flow Automation Studio 2.8.6
+# Flow Automation Studio 2.8.7
 
 Tool desktop tự động hoá Google Flow. Bản chuyển từ tiện ích Chrome
 **Flow Automation Local 1.10.0** sang ứng dụng chạy thẳng trên máy.
@@ -195,6 +195,54 @@ vừa soạn prompt vừa chỉnh cài đặt.
 
 
 ---
+
+## 0q. Bản 2.8.7 — Flow bỏ "Lite [Lower Priority]", mục Model video không chọn được
+
+**Triệu chứng (28/09).** Flow bỏ model "Veo 3.1 - Lite [Lower Priority]". Nút
+"Đọc danh sách model" vẫn đọc đúng 4 model (Omni 1.1 Flash · Veo 3.1 - Lite ·
+Veo 3.1 - Fast · Veo 3.1 - Quality), nhưng bấm vào ô Model chính / phụ / dự
+phòng thì không chọn được model khác — ô nào cũng đứng ở "Veo 3.1 - Lite".
+
+**Nguyên nhân gốc — giao diện.** Ba ô là `<input list="dsModel">` (ô gõ chữ kèm
+gợi ý). Chromium **lọc gợi ý theo chữ đang có trong ô**: ô đang ghi
+"Veo 3.1 - Lite" thì chỉ hiện những model bắt đầu bằng chữ đó — tức là không
+hiện gì, hoặc chỉ đúng nó. Muốn đổi phải xoá hết chữ trước, không ai đoán ra.
+Lúc còn Lower Priority thì ô thường trống nên không lộ.
+
+**Nguyên nhân gốc — kế hoạch cũ.** Cài đặt đã lưu có thể vẫn ghi
+"Veo 3.1 - Lite [Lower Priority]". Trước đây app chỉ phát hiện lúc mở hộp chọn
+model trước từng prompt, báo "Flow không có model…" ba lần rồi mới chịu tắt.
+
+**Sửa.**
+- Ba ô đổi thành hộp chọn (`<select>`) thật: bấm là ra đủ danh sách. Dòng đầu
+  mỗi hộp nói rõ để trống nghĩa là gì. Tên đã lưu mà Flow không còn thì vẫn hiện,
+  viền vàng, ghi "⚠ … — Flow không còn model này", để bạn tự chọn lại chứ app
+  không lặng lẽ đổi.
+- Mục "Dự phòng khi Lower Priority bị chặn" **tự ẩn** khi danh sách Flow không
+  còn model Lower Priority nào, và tự hiện lại nếu Google đưa nó trở lại (bấm
+  "Đọc danh sách model" là đủ). Logic Lower Priority giữ nguyên, chỉ nằm im.
+- Đầu mẻ, app đọc danh sách model thật trên tab. Tên nào Flow không còn thì bỏ
+  khỏi kế hoạch của mẻ đó, ghi **một** dòng cảnh báo, không mở hộp chọn model vô ích.
+- Prompt đầu tiên của mỗi tab luôn ghi một dòng xác nhận model, kể cả khi model
+  đang đúng sẵn: `🎚 [tab] Model đang là X — đúng kế hoạch, không cần đổi`.
+  Trước đây trường hợp này im lặng, nhật ký không phân biệt được "đã đúng" với
+  "không chạy".
+- Thẻ Flow báo lỗi (`flow-error-tile`) giờ được đọc chữ và ghi vào nhật ký:
+  `🧾 [tab] Flow ghi trên thẻ lỗi: "…"`. Lần trước video [1] hỏng mà không biết vì sao.
+
+**Rà các tính năng khác theo nhật ký 28/09.** Nạp engine, đọc model, dán prompt
+(21.804 ký tự), bấm Tạo bằng chuột thật, nhận thẻ lỗi: chạy đúng trên Flow mới.
+Đổi tên / tải về / đổi chế độ lần cuối chạy đúng ngày 22/09, hôm nay chưa được
+dùng tới nên chưa xác nhận lại trên Flow mới.
+
+**Vì sao lần trước không bắt được.** Bài kiểm giao diện đặt giá trị bằng code
+(`el.value = …`), không bao giờ mở danh sách gợi ý như người bấm, nên không thấy
+chuyện lọc. Trang giả Flow cũng luôn có Lower Priority. Nay trang giả có
+`__fixtureBoModel()` để dựng đúng cảnh Flow bỏ model, và `tests/model-e2e.js` có
+thêm mục 8 (kế hoạch cũ gặp Flow mới) và mục 9 (dòng xác nhận model).
+
+**Chưa nghiệm thu được.** Đổi model trên Flow thật; chữ đọc từ thẻ lỗi trên Flow
+thật (mới thử trên trang giả).
 
 ## 0p. Bản 2.8.6 — tạo được nhưng không tải về
 

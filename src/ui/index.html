@@ -284,23 +284,24 @@
         Để trống cả mục này thì app <b>không đụng</b> tới hộp chọn model — Flow đang chọn gì thì chạy nấy,
         y như bản cũ. Chỉ áp cho mẻ <b>video</b> (kể cả mẻ video tự nối sau ảnh).
       </p>
-      <datalist id="dsModel">
-        <option value="Veo 3.1 - Lite [Lower Priority]">
-        <option value="Veo 3.1 - Lite">
-        <option value="Veo 3.1 - Fast">
-        <option value="Veo 3.1 - Quality">
-        <option value="Omni 1.1 Flash">
-      </datalist>
+      <!-- Ba ô model là HỘP CHỌN (select), không phải ô gõ chữ kèm gợi ý
+           (<input list>). Ô gợi ý của Chromium lọc danh sách theo chữ ĐANG CÓ
+           trong ô: ô đã ghi "Veo 3.1 - Lite" thì chỉ gợi ý đúng dòng đó, trùng
+           khít thì không hiện gì — nhìn y như "không bấm chọn được". Danh sách
+           do app.js dựng (veHopChonModel), làm mới bằng nút "Đọc danh sách". -->
       <div class="field">
         <label class="label" for="modelChinh">Model chính</label>
-        <input type="text" id="modelChinh" list="dsModel" placeholder="(giữ nguyên model đang chọn trên Flow)">
+        <select id="modelChinh"></select>
       </div>
 
+      <!-- Chỉ hiện khi Flow CÒN model Lower Priority. Flow đã bỏ nó (09/2026),
+           nên mặc định ẩn; nút "Đọc danh sách" thấy nó quay lại thì tự hiện. -->
+      <div id="khoiLowerPriority" class="hidden">
       <div class="sep"></div>
       <p class="hint" style="margin-bottom:8px"><b>Tự chuyển khi Lower Priority bị chặn</b> — nên dùng.</p>
       <div class="row">
         <div class="field"><label class="label" for="modelDuPhong">Model dự phòng (tốn credit)</label>
-          <input type="text" id="modelDuPhong" list="dsModel" placeholder="(không — cho tài khoản nghỉ như cũ)"></div>
+          <select id="modelDuPhong"></select></div>
         <div class="field"><label class="label" for="modelThuLai">Thử lại Lower Priority sau (phút)</label>
           <input type="number" id="modelThuLai" min="5" max="240" value="30"></div>
       </div>
@@ -310,12 +311,17 @@
         Hết giờ thì prompt mới quay lại Lower Priority; bị lại thì chờ gấp đôi. Nếu model dự phòng <i>cũng</i> hỏng
         thì đó là cả tài khoản bị nhắc — chế độ an toàn cho nghỉ như bình thường.
       </p>
+      </div>
+      <p class="hint" id="lpDaBo" style="margin-top:8px">
+        Flow đã bỏ model <b>Lower Priority</b> nên mục "tự chuyển khi Lower Priority bị chặn" đang ẩn.
+        Nếu Flow đưa nó trở lại, bấm <b>Đọc danh sách model</b> là mục đó tự hiện.
+      </p>
 
       <div class="sep"></div>
       <p class="hint" style="margin-bottom:8px"><b>Xen kẽ hai model</b> — để chia chi phí, <i>không</i> giúp tránh bị chặn.</p>
       <div class="row">
         <div class="field"><label class="label" for="modelPhu">Model phụ</label>
-          <input type="text" id="modelPhu" list="dsModel" placeholder="(không xen kẽ)"></div>
+          <select id="modelPhu"></select></div>
         <div class="field"><label class="label" for="modelXenKe">Cứ N prompt thì 1 prompt dùng model phụ</label>
           <input type="number" id="modelXenKe" min="0" max="50" value="0"></div>
       </div>

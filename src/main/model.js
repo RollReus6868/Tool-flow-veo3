@@ -32,14 +32,54 @@
 //  Cả file là hàm thuần để tests/run.js gọi thẳng được.
 // ============================================================================
 
-/** Model Flow đang cho chọn (ảnh chụp người dùng gửi 09/2026). */
+/**
+ * Model video Flow đang cho chọn — đọc từ nhật ký người dùng 28/09/2026:
+ *   "Flow có 4 model: Omni 1.1 Flash · Veo 3.1 - Lite · Veo 3.1 - Fast · Veo 3.1 - Quality"
+ *
+ * "Veo 3.1 - Lite [Lower Priority]" ĐÃ BỊ FLOW BỎ. Danh sách này chỉ là gợi ý
+ * mặc định cho giao diện (phải khớp DS_MODEL_MAC_DINH trong src/ui/app.js —
+ * tests/run.js so); danh sách thật luôn đọc từ trang bằng "Đọc danh sách".
+ * Mọi logic Lower Priority bên dưới GIỮ NGUYÊN, để Google đưa nó trở lại thì
+ * app vẫn chạy đúng mà không cần sửa.
+ */
 const MODEL_GOI_Y = [
-  'Veo 3.1 - Lite [Lower Priority]',
   'Veo 3.1 - Lite',
   'Veo 3.1 - Fast',
   'Veo 3.1 - Quality',
   'Omni 1.1 Flash'
 ];
+
+/**
+ * Bỏ khỏi kế hoạch những tên model Flow KHÔNG còn cho chọn.
+ *
+ * Vì sao: người dùng lưu "Veo 3.1 - Lite [Lower Priority]" từ trước khi Flow
+ * bỏ nó. Không lọc ở đầu mẻ thì app mở hộp chọn model trước mỗi prompt, lần
+ * nào cũng báo "Flow không có model…", tới lần thứ ba mới chịu tắt kế hoạch —
+ * ba lần mở/đóng bảng cài đặt vô ích, và ba dòng cảnh báo lẫn giữa mẻ.
+ *
+ * @param {object}   k   kế hoạch đã chuẩn hoá
+ * @param {string[]} ds  danh sách model đọc từ trang ([] = không đọc được →
+ *                       không lọc gì, để nguyên cho bước đổi model tự báo)
+ * @returns {{keHoach: object, daBo: {truong:string, ten:string}[]}}
+ */
+function locTheoDanhSach(k, ds) {
+  if (!k || !Array.isArray(ds) || !ds.length) return { keHoach: k, daBo: [] };
+  const co = (ten) => ds.some((t) => cungModel(t, ten));
+  const kq = { ...k };
+  const daBo = [];
+  for (const truong of ['chinh', 'phu', 'duPhong']) {
+    if (kq[truong] && !co(kq[truong])) {
+      daBo.push({ truong, ten: kq[truong] });
+      kq[truong] = '';
+    }
+  }
+  if (!kq.phu) kq.xenKeMoi = 0;
+  // Dự phòng chỉ chạy khi đang dùng Lower Priority. Flow không còn model
+  // Lower Priority nào thì dự phòng không bao giờ được dùng — bỏ luôn, để
+  // nhật ký khỏi ghi một kế hoạch "Lower Priority bị chặn → …" không có thật.
+  if (kq.duPhong && !ds.some(laLowerPriority)) kq.duPhong = '';
+  return { keHoach: kq, daBo };
+}
 
 /**
  * Khoá so sánh — PHẢI giống hệt khoa() trong src/inject/flow-model.js.
@@ -155,5 +195,6 @@ module.exports = {
   modelChoPrompt,
   nenChuyenDuPhong,
   thoiGianTranhLp,
-  moTaKeHoach
+  moTaKeHoach,
+  locTheoDanhSach
 };

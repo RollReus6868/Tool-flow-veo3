@@ -257,35 +257,87 @@ async function run(mainWindow, app) {
   if (pillAn !== 'none') failures.push('Nút "Có bản mới" vẫn hiện khi chưa có bản mới (display=' + pillAn + ')');
   else note('Nút "Có bản mới" ẩn đúng khi chưa có gì mới');
 
-  // ── 3e2. Thẻ Model video (2.8.0) ─────────────────────────────────────
-  //  Điền thử một kế hoạch rồi đọc lại đúng thứ collectSettings() gửi cho
-  //  tiến trình chính — sai tên khoá ở đây là cả tính năng im lặng tắt.
+  // ── 3e2. Thẻ Model video (2.8.0, sửa lại ở 2.8.7) ────────────────────
+  //
+  //  2.8.7: Flow bỏ "Veo 3.1 - Lite [Lower Priority]". Người dùng báo "không
+  //  bấm chọn model chính được" — ba ô là ô gõ chữ kèm datalist, và gợi ý của
+  //  Chromium lọc theo chữ đang có trong ô: ô đã ghi "Veo 3.1 - Lite" thì bấm
+  //  vào không hiện gì. Nay là hộp chọn thật. Bài này canh:
+  //    a. ba ô là <select>, đủ 4 model Flow đang có, KHÔNG còn Lower Priority;
+  //    b. chọn bằng hộp → collectSettings() gửi đúng khoá;
+  //    c. mục "dự phòng khi Lower Priority bị chặn" ẩn, và KHÔNG gửi duPhong;
+  //    d. giá trị cũ Flow không còn thì hiện dòng ⚠ chứ không lặng lẽ mất;
+  //    e. Flow đưa Lower Priority trở lại → mục dự phòng tự hiện.
   const km = await wc.executeJavaScript(`
     (() => {
-      const set = (id, v) => { const e = document.querySelector(id); e.value = v;
-        e.dispatchEvent(new Event('input')); e.dispatchEvent(new Event('change')); };
-      set('#modelChinh', 'Veo 3.1 - Lite [Lower Priority]');
-      set('#modelDuPhong', 'Veo 3.1 - Lite');
-      set('#modelPhu', 'Veo 3.1 - Fast');
-      set('#modelXenKe', '2');
-      document.querySelector('#theModelVideo').scrollIntoView({ block: 'center' });
-      return { cm: window.__collectSettings().chonModel, goiY: document.querySelector('#modelXenKeHint').textContent };
+      const hop = (id) => document.querySelector(id);
+      const chon = (id, v) => { const e = hop(id); e.value = v;
+        e.dispatchEvent(new Event('input')); e.dispatchEvent(new Event('change')); return e.value; };
+      const ra = {};
+      ra.laSelect = ['#modelChinh', '#modelPhu', '#modelDuPhong'].every((i) => hop(i).tagName === 'SELECT');
+      ra.luaChon = [...hop('#modelChinh').options].map((o) => o.value).filter(Boolean);
+      ra.chonDuoc = chon('#modelChinh', 'Veo 3.1 - Fast');
+      chon('#modelPhu', 'Veo 3.1 - Quality');
+      chon('#modelXenKe', '2');
+      ra.lpAn = hop('#khoiLowerPriority').classList.contains('hidden');
+      ra.ghiChuHien = !hop('#lpDaBo').classList.contains('hidden');
+      ra.cm = window.__collectSettings().chonModel;
+      ra.goiY = hop('#modelXenKeHint').textContent;
+      return ra;
     })()
   `);
-  if (!km.cm || km.cm.chinh !== 'Veo 3.1 - Lite [Lower Priority]' || km.cm.duPhong !== 'Veo 3.1 - Lite' ||
-      String(km.cm.xenKeMoi) !== '2' || km.cm.phu !== 'Veo 3.1 - Fast') {
+  if (!km.laSelect) failures.push('Ô model vẫn là ô gõ chữ, không phải hộp chọn');
+  else if (JSON.stringify(km.luaChon) !== JSON.stringify(['Veo 3.1 - Lite', 'Veo 3.1 - Fast', 'Veo 3.1 - Quality', 'Omni 1.1 Flash'])) {
+    failures.push('Hộp Model chính có danh sách sai: ' + JSON.stringify(km.luaChon));
+  } else if (km.chonDuoc !== 'Veo 3.1 - Fast') {
+    failures.push('Chọn "Veo 3.1 - Fast" trong hộp Model chính không ăn: ' + km.chonDuoc);
+  } else if (!km.cm || km.cm.chinh !== 'Veo 3.1 - Fast' || km.cm.phu !== 'Veo 3.1 - Quality' ||
+             String(km.cm.xenKeMoi) !== '2' || km.cm.duPhong !== '') {
     failures.push('collectSettings().chonModel sai: ' + JSON.stringify(km.cm));
-  } else note('Kế hoạch model đi đúng vào settings.chonModel');
+  } else if (!km.lpAn || !km.ghiChuHien) {
+    failures.push('Mục dự phòng Lower Priority chưa ẩn dù Flow không còn Lower Priority');
+  } else note('Model: 3 hộp chọn, 4 model Flow đang có, chọn được, dự phòng Lower Priority ẩn và không gửi');
   if (!/chính, phụ, chính, phụ/.test(km.goiY)) failures.push('Gợi ý xen kẽ sai: ' + km.goiY);
+
+  // d. Cài đặt cũ còn lưu tên Lower Priority → hiện ⚠, giữ nguyên giá trị.
+  const cu = await wc.executeJavaScript(`
+    (() => {
+      datChonModel({ chinh: 'Veo 3.1 - Lite [Lower Priority]', phu: 'Veo 3.1 - Quality', xenKeMoi: 2 });
+      const e = document.querySelector('#modelChinh');
+      document.querySelector('#theModelVideo').scrollIntoView({ block: 'center' });
+      return { v: e.value, co: e.classList.contains('model-het'),
+               dong: [...e.options].map((o) => o.textContent).find((t) => t.startsWith('⚠')) || '',
+               gui: window.__collectSettings().chonModel.chinh };
+    })()
+  `);
+  if (cu.v !== 'Veo 3.1 - Lite [Lower Priority]' || !cu.co || !/Flow không còn/.test(cu.dong) ||
+      cu.gui !== 'Veo 3.1 - Lite [Lower Priority]') {
+    failures.push('Tên model cũ Flow không còn bị xử lý sai: ' + JSON.stringify(cu));
+  } else note('Tên model cũ Flow không còn: giữ nguyên, hiện dòng ⚠ và viền vàng');
   await wait(400);
   {
     const img = await wc.capturePage();
     fs.writeFileSync(path.join(SHOT_DIR, 'run-model-video.png'), img.toPNG());
     note('Đã chụp run-model-video.png');
   }
+
+  // e. Flow đưa Lower Priority trở lại → mục dự phòng tự hiện, chọn lại
+  //    được dự phòng; rồi trả về danh sách thật.
+  const lp = await wc.executeJavaScript(`
+    (() => {
+      apDungDanhSachModel(['Veo 3.1 - Lite [Lower Priority]', 'Veo 3.1 - Lite', 'Veo 3.1 - Fast']);
+      const hien = !document.querySelector('#khoiLowerPriority').classList.contains('hidden');
+      const e = document.querySelector('#modelChinh');
+      const hetCo = !e.classList.contains('model-het');   // giờ Flow CÓ tên đó
+      apDungDanhSachModel(['Omni 1.1 Flash', 'Veo 3.1 - Lite', 'Veo 3.1 - Fast', 'Veo 3.1 - Quality']);
+      return { hien, hetCo, anLai: document.querySelector('#khoiLowerPriority').classList.contains('hidden') };
+    })()
+  `);
+  if (!lp.hien || !lp.hetCo || !lp.anLai) failures.push('Mục dự phòng không theo danh sách Flow: ' + JSON.stringify(lp));
+  else note('Flow có lại Lower Priority thì mục dự phòng tự hiện, hết thì tự ẩn');
+
   // Trả về trống để các bước sau chạy như bản cũ.
-  await wc.executeJavaScript(`['#modelChinh','#modelDuPhong','#modelPhu'].forEach((i) => { document.querySelector(i).value = ''; });
-    document.querySelector('#modelXenKe').value = '0'; true`);
+  await wc.executeJavaScript(`datChonModel({ chinh: '', phu: '', duPhong: '', xenKeMoi: 0 }); true`);
 
   // ── 3e3. Thẻ Cập nhật (2.8.0): vẽ trạng thái "đang tải" và "sẵn sàng cài"
   const cn = await wc.executeJavaScript(`

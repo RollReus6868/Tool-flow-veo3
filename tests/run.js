@@ -1123,7 +1123,10 @@ test('model: nối dây trong main.js đủ các chỗ', () => {
   // 1. Đổi model trong lượt xin bấm Tạo — lúc engine đứng chờ.
   assert.ok(/modelChoPrompt/.test(lay("case 'ACQUIRE_CREATE_SLOT'")), 'ACQUIRE_CREATE_SLOT chưa chọn model');
   // 2. Engine chỉ xin lượt khi giãn cách > 0 → phải ép tối thiểu 1 giây.
-  assert.ok(/multiTabStagger:\s*Math\.max\(1/.test(lay('async function chuanBiModel')), 'chưa ép giãn cách ≥ 1 giây');
+  // Soi TRỌN thân hàm, không phải 2.500 ký tự đầu: bước kiểm danh sách model
+  // đầu mẻ (2.8.7) làm hàm dài ra và dòng ép giãn cách rơi ra ngoài cửa sổ cũ.
+  const thanChuanBi = (() => { const i = m.indexOf('async function chuanBiModel'); return m.slice(i, m.indexOf('\n}\n', i)); })();
+  assert.ok(/multiTabStagger:\s*Math\.max\(1/.test(thanChuanBi), 'chưa ép giãn cách ≥ 1 giây');
   // 3. Cả hai đường giao việc (bấm Bắt đầu, và mẻ video nối sau ảnh).
   assert.ok(/chuanBiModel\(tab, settings\)[\s\S]{0,200}buildStartMessage\(prompts, part, caiDatTab\)/.test(m),
     'nút Bắt đầu chưa áp kế hoạch model');
@@ -1179,9 +1182,17 @@ test('model: tiêm flow-model.js SAU flow-mode.js', () => {
 
 test('model: giao diện có đủ ô và gửi settings.chonModel', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui', 'index.html'), 'utf8');
-  for (const id of ['modelChinh', 'modelPhu', 'modelXenKe', 'modelDuPhong', 'modelThuLai', 'btnDocModel', 'dsModel']) {
+  for (const id of ['modelChinh', 'modelPhu', 'modelXenKe', 'modelDuPhong', 'modelThuLai', 'btnDocModel']) {
     assert.ok(html.includes(`id="${id}"`), `thiếu ô #${id}`);
   }
+  // 2.8.7: ba ô tên model PHẢI là hộp chọn. Ô gõ chữ kèm gợi ý (<input
+  // list>) lọc gợi ý theo chữ đang có trong ô — đã ghi sẵn một tên thì bấm
+  // vào không hiện gì, đúng lỗi "không bấm chọn model chính được" 28/09/2026.
+  for (const id of ['modelChinh', 'modelPhu', 'modelDuPhong']) {
+    assert.ok(new RegExp(`<select id="${id}"`).test(html), `#${id} phải là <select>, không phải ô gõ chữ`);
+  }
+  assert.ok(!/list="dsModel"/.test(html) && !/<datalist/.test(html),
+    'còn ô gõ chữ kèm datalist — bấm vào sẽ không hiện đủ danh sách model');
   const ui = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui', 'app.js'), 'utf8');
   assert.strictEqual((ui.match(/s\.chonModel = docChonModel\(\)/g) || []).length, 2,
     'collectSettings và collectForSave đều phải gom chonModel');
@@ -1526,6 +1537,94 @@ test('thư mục dữ liệu là Tool-flow-veo3, có chuyển dữ liệu cũ sa
   assert.ok(/cpSync/.test(khoi), 'thiếu bước chép dự phòng khi đổi tên hỏng');
   assert.ok(/setPath\('userData', cu\)/.test(khoi),
     'thiếu đường lùi: chuyển không được thì phải Ở LẠI thư mục cũ, không được bỏ mất phiên đăng nhập');
+});
+
+// ── 2.8.7: Flow bỏ "Veo 3.1 - Lite [Lower Priority]" ──────────────────────
+//
+//  Nhật ký 28/09/2026: "Flow có 4 model: Omni 1.1 Flash · Veo 3.1 - Lite ·
+//  Veo 3.1 - Fast · Veo 3.1 - Quality". Người dùng còn lưu tên Lower Priority
+//  từ trước. Ba bài dưới canh: kế hoạch bị lọc theo danh sách THẬT, gợi ý
+//  mặc định hai bên khớp nhau và không còn Lower Priority, và nối dây đủ.
+test('model: lọc kế hoạch theo danh sách Flow thật', () => {
+  const MK = require('../src/main/model');
+  const DS = ['Omni 1.1 Flash', 'Veo 3.1 - Lite', 'Veo 3.1 - Fast', 'Veo 3.1 - Quality'];
+
+  // Tên cũ Flow không còn → bỏ, và nói ra đã bỏ gì.
+  const k1 = MK.chuanHoaKeHoach({ chinh: 'Veo 3.1 - Lite [Lower Priority]', phu: 'Veo 3.1 - Fast', xenKeMoi: 2 });
+  const r1 = MK.locTheoDanhSach(k1, DS);
+  assert.strictEqual(r1.keHoach.chinh, '', 'tên Lower Priority phải bị bỏ khi Flow không còn');
+  assert.deepStrictEqual(r1.daBo, [{ truong: 'chinh', ten: 'Veo 3.1 - Lite [Lower Priority]' }]);
+  assert.strictEqual(r1.keHoach.phu, 'Veo 3.1 - Fast', 'model phụ Flow còn thì phải giữ');
+
+  // BẪY TIỀN TỐ: "Veo 3.1 - Lite" có trong danh sách KHÔNG được làm tên Lower
+  // Priority lọt qua (so bằng nhau sau chuẩn hoá, không so "có chứa").
+  assert.ok(!MK.locTheoDanhSach(MK.chuanHoaKeHoach({ chinh: 'Veo 3.1 - Lite [Lower Priority]' }), ['Veo 3.1 - Lite'])
+    .keHoach.chinh, 'tiền tố "Veo 3.1 - Lite" không được coi là khớp Lower Priority');
+
+  // Tên còn trên Flow thì giữ nguyên, kể cả khác hoa thường / khoảng trắng.
+  const r2 = MK.locTheoDanhSach(MK.chuanHoaKeHoach({ chinh: 'veo 3.1  - FAST' }), DS);
+  assert.strictEqual(r2.keHoach.chinh, 'veo 3.1 - FAST');
+  assert.deepStrictEqual(r2.daBo, []);
+
+  // Model phụ bị bỏ → tắt luôn xen kẽ, không để N còn đó mà không có gì để xen.
+  const r3 = MK.locTheoDanhSach(MK.chuanHoaKeHoach({ chinh: 'Veo 3.1 - Lite', phu: 'Veo 9 Ultra', xenKeMoi: 3 }), DS);
+  assert.strictEqual(r3.keHoach.phu, '');
+  assert.strictEqual(r3.keHoach.xenKeMoi, 0);
+
+  // Flow không còn Lower Priority nào → dự phòng vô nghĩa, bỏ (nó chỉ chạy
+  // khi ĐANG dùng Lower Priority). Còn Lower Priority thì giữ.
+  const kDp = MK.chuanHoaKeHoach({ chinh: 'Veo 3.1 - Lite', duPhong: 'Veo 3.1 - Fast' });
+  assert.strictEqual(MK.locTheoDanhSach(kDp, DS).keHoach.duPhong, '');
+  assert.strictEqual(MK.locTheoDanhSach(kDp, DS.concat('Veo 3.1 - Lite [Lower Priority]')).keHoach.duPhong,
+    'Veo 3.1 - Fast', 'Google đưa Lower Priority trở lại thì dự phòng phải chạy lại được');
+
+  // Đọc danh sách thất bại ([]) → KHÔNG lọc gì cả.
+  assert.deepStrictEqual(MK.locTheoDanhSach(k1, []).keHoach, k1);
+});
+
+test('model: gợi ý mặc định khớp hai bên và không còn Lower Priority', () => {
+  const MK = require('../src/main/model');
+  const ui = fs.readFileSync(path.join(GOC, 'src', 'ui', 'app.js'), 'utf8');
+  const m = ui.match(/const DS_MODEL_MAC_DINH = (\[[^\]]*\]);/);
+  assert.ok(m, 'không tìm thấy DS_MODEL_MAC_DINH trong app.js');
+  const dsUi = JSON.parse(m[1].replace(/'/g, '"'));
+  assert.deepStrictEqual(dsUi, MK.MODEL_GOI_Y, 'gợi ý model ở giao diện lệch với src/main/model.js');
+  assert.ok(!MK.MODEL_GOI_Y.some(MK.laLowerPriority), 'gợi ý mặc định còn Lower Priority — Flow đã bỏ');
+  // Logic Lower Priority vẫn còn nguyên, để Google đưa nó trở lại vẫn chạy.
+  assert.ok(MK.laLowerPriority('Veo 3.1 - Lite [Lower Priority]'));
+});
+
+test('model: đầu mẻ kiểm danh sách thật, prompt đầu luôn xác nhận model', () => {
+  const m = fs.readFileSync(path.join(GOC, 'main.js'), 'utf8');
+  const than = (dau) => { const i = m.indexOf(dau); return i < 0 ? '' : m.slice(i, m.indexOf('\n}\n', i)); };
+
+  const cb = than('async function chuanBiModel');
+  assert.ok(/__flowListModels/.test(cb) && /locTheoDanhSach/.test(cb),
+    'chuanBiModel chưa đối chiếu kế hoạch với danh sách model thật trên Flow');
+  // Lọc TRƯỚC khi đọc model đang chọn và TRƯỚC khi gán tab.keHoachModel.
+  assert.ok(cb.indexOf('locTheoDanhSach') < cb.indexOf('tab.keHoachModel = k'),
+    'phải lọc kế hoạch trước khi giao nó cho tab');
+
+  const dm = than('async function datModel');
+  assert.ok(/baoKhiGiuNguyen/.test(dm) && /đúng kế hoạch/.test(dm),
+    'datModel vẫn im lặng khi model đã đúng — nhật ký không phân biệt được "đã đúng" với "không chạy"');
+  assert.ok(/datModel\(tab, model, lyDo, tab\.demPromptMoi === 1\)/.test(m),
+    'prompt đầu mẻ chưa bật xác nhận model thành lời');
+});
+
+// ── 2.8.7: ghi lý do Flow viết trên thẻ lỗi ───────────────────────────────
+test('thẻ lỗi: đọc chữ Flow ghi trên thẻ và ghi vào nhật ký', () => {
+  const m = fs.readFileSync(path.join(GOC, 'main.js'), 'utf8');
+  const cb = fs.readFileSync(path.join(GOC, 'src', 'inject', 'flow-canh-bao.js'), 'utf8');
+  assert.ok(/window\.__flowDocLyDoTheLoi = function/.test(cb), 'flow-canh-bao.js chưa phơi __flowDocLyDoTheLoi');
+  assert.ok(/flow-error-tile/.test(cb), 'chưa dò thẻ flow-error-tile');
+  assert.ok(/async function ghiLyDoTheLoi/.test(m), 'main.js thiếu ghiLyDoTheLoi');
+  // Gọi từ UPDATE_TABLE_DATA và KHÔNG phụ thuộc chế độ an toàn.
+  const khoi = m.slice(m.indexOf("case 'UPDATE_TABLE_DATA'"), m.indexOf("case 'UPDATE_PROGRESS'"));
+  assert.ok(/ghiLyDoTheLoi\(tab, hangs\)/.test(khoi), 'UPDATE_TABLE_DATA chưa gọi ghiLyDoTheLoi');
+  const g = m.slice(m.indexOf('async function ghiLyDoTheLoi'), m.indexOf('\n}\n', m.indexOf('async function ghiLyDoTheLoi')));
+  assert.ok(!/caiDatAnToan\.bat/.test(g), 'đọc lý do thẻ lỗi không được phụ thuộc chế độ an toàn');
+  assert.ok(/_lyDoDaGhi/.test(g), 'phải lọc trùng — lưới còn thẻ lỗi cũ thì câu đó lặp mãi');
 });
 
 // ── Kết luận ───────────────────────────────────────────────────────────────

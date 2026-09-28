@@ -135,6 +135,34 @@ function tabCungTaiKhoan(accountId) {
 }
 
 /**
+ * Có prompt vừa hỏng → đọc chữ Flow ghi trên thẻ lỗi và ghi vào nhật ký.
+ *
+ * Vì sao (2.8.7): nhật ký 28/09/2026 17:16:13 chỉ có
+ *     [1] Error: Tạo thất bại (flow-error-tile)
+ * — biết là hỏng, không biết vì sao. Mỗi câu lý do chỉ ghi MỘT lần cho mỗi
+ * tab: lưới có thể còn thẻ lỗi cũ của mẻ trước, không lọc thì câu đó lặp lại
+ * mỗi lần có lỗi mới.
+ */
+async function ghiLyDoTheLoi(tab, rows) {
+  if (!tab || !tab.ready) return;
+  if (!tab._loiDaDocLyDo) tab._loiDaDocLyDo = new Set();
+  if (!tab._lyDoDaGhi) tab._lyDoDaGhi = new Set();
+  const moi = anToan.loiMoi(rows, tab._loiDaDocLyDo);
+  if (!moi.length) return;
+  let r = null;
+  try {
+    r = await tab.view.webContents.executeJavaScript(
+      'window.__flowDocLyDoTheLoi ? window.__flowDocLyDoTheLoi() : null', true);
+  } catch (_) { return; }
+  if (!r || !r.ok || !Array.isArray(r.lyDo)) return;
+  for (const cau of r.lyDo) {
+    if (tab._lyDoDaGhi.has(cau)) continue;
+    tab._lyDoDaGhi.add(cau);
+    logToUi('error', `🧾 [${tab.id}] Flow ghi trên thẻ lỗi: "${cau}"`, tab.id);
+  }
+}
+
+/**
  * Đếm prompt vừa hỏng, và nếu đủ dấu hiệu thì cho cả tài khoản nghỉ.
  * Gọi từ nhánh UPDATE_TABLE_DATA.
  */
@@ -299,7 +327,7 @@ const cho = (ms) => new Promise((r) => setTimeout(r, ms));
  * Chọn model trên trang Flow của một tab. Luôn đọc lại trên trang chứ không
  * tin bộ nhớ: người dùng có thể vừa tự bấm đổi.
  */
-async function datModel(tab, ten, lyDo) {
+async function datModel(tab, ten, lyDo, baoKhiGiuNguyen = false) {
   if (!tab || !tab.ready || !ten) return { ok: false, lyDo: 'Tab chưa sẵn sàng' };
   let r;
   try {
@@ -316,6 +344,14 @@ async function datModel(tab, ten, lyDo) {
         `🎚 [${tab.id}] Model → ${tab.modelHienTai}` +
         (r.tinDung != null ? ` (${r.tinDung} credit mỗi lần tạo)` : '') +
         (lyDo ? ` · ${lyDo}` : ''), tab.id);
+    } else if (baoKhiGiuNguyen) {
+      // Trước 2.8.7 nhánh này IM LẶNG. Nhật ký 28/09 17:15 vì thế không phân
+      // biệt được "model đã đúng sẵn nên không đổi" với "không hề chạy bước đổi
+      // model" — người dùng thấy kế hoạch ghi Veo 3.1 - Lite rồi… không gì cả.
+      // Ở prompt đầu của mẻ, luôn xác nhận thành lời.
+      logToUi('info',
+        `🎚 [${tab.id}] Model đang là ${tab.modelHienTai} — đúng kế hoạch, không cần đổi` +
+        (r.tinDung != null ? ` (${r.tinDung} credit mỗi lần tạo)` : '') + '.', tab.id);
     }
   } else {
     tab.modelHienTai = null;
@@ -347,8 +383,33 @@ async function chuanBiModel(tab, settings) {
   tab.loiModel = 0;
   if (!settings || settings.runMode !== 'video') return settings;
 
-  const k = modelKH.chuanHoaKeHoach(settings.chonModel);
+  let k = modelKH.chuanHoaKeHoach(settings.chonModel);
   if (!modelKH.coHieuLuc(k)) return settings;
+
+  // ── Kiểm kế hoạch với danh sách Flow THẬT, một lần ở đầu mẻ (2.8.7) ──────
+  //  Flow đã bỏ "Veo 3.1 - Lite [Lower Priority]" (09/2026). Ai còn lưu tên đó
+  //  thì trước đây app mở hộp chọn model trước mỗi prompt, báo "Flow không có
+  //  model…", tới lần thứ ba mới tắt kế hoạch. Nay đọc danh sách một lần, tên
+  //  nào không còn thì bỏ và nói rõ một dòng. Đọc không được thì để nguyên —
+  //  bước đổi model vẫn tự báo lỗi như cũ.
+  try {
+    const r = await tab.view.webContents.executeJavaScript(
+      'window.__flowListModels ? window.__flowListModels() : null', true);
+    if (r && r.ok && Array.isArray(r.ds) && r.ds.length) {
+      const { keHoach, daBo } = modelKH.locTheoDanhSach(k, r.ds);
+      const TEN_TRUONG = { chinh: 'Model chính', phu: 'Model phụ', duPhong: 'Model dự phòng' };
+      for (const x of daBo) {
+        logToUi('warning',
+          `⚠️ [${tab.id}] ${TEN_TRUONG[x.truong]} "${x.ten}" — Flow KHÔNG còn model này ` +
+          `(đang có: ${r.ds.join(' · ')}). Bỏ qua cho mẻ này; vào Cài đặt → Model video chọn lại.`, tab.id);
+      }
+      k = keHoach;
+      if (!modelKH.coHieuLuc(k)) {
+        logToUi('info', `🎚 [${tab.id}] Model: giữ nguyên model đang chọn trên Flow.`, tab.id);
+        return settings;
+      }
+    }
+  } catch (_) { /* đọc không được thì không lọc — xem ghi chú trên */ }
 
   // Không đặt model chính thì "chính" là model đang chọn sẵn trên trang —
   // phải đọc ra, nếu không sau một prompt xen kẽ app không biết quay về đâu.
@@ -765,6 +826,9 @@ async function handleEngineMessage(message, senderWc) {
       // Canh chừng dấu hiệu bị chặn. Không await: bảng tiến độ phải trả lời
       // engine ngay, còn việc đếm lỗi chậm vài trăm mili-giây không sao.
       if (tab) theoDoiAnToan(tab, hangs).catch(() => {});
+      // Có dòng lỗi mới thì đọc luôn chữ Flow ghi trên thẻ lỗi. Không await vì
+      // cùng lý do trên; chạy cả khi chế độ an toàn đang TẮT.
+      if (tab) ghiLyDoTheLoi(tab, hangs).catch(() => {});
       sendUi('table', { tabId, rows: hangs });
       // Bảng tiến độ đọc từ payload stats, nên phải đẩy lại mỗi lần bảng đổi —
       // nếu không thì phần trăm và số đã tải chỉ nhúc nhích khi có prompt xong.
@@ -992,7 +1056,8 @@ async function handleEngineMessage(message, senderWc) {
         const canDoi = model && (!tab.modelHienTai ||
           !modelKH.cungModel(tab.modelHienTai, model) || tab.demPromptMoi % 10 === 0);
         if (canDoi) {
-          const r = await datModel(tab, model, lyDo);
+          // Prompt đầu mẻ: xác nhận model thành lời kể cả khi không cần đổi.
+          const r = await datModel(tab, model, lyDo, tab.demPromptMoi === 1);
           tab.loiModel = r && r.ok ? 0 : (tab.loiModel || 0) + 1;
           // Hỏng 3 lần liền là giao diện Flow đã khác thứ app biết — thôi
           // bấm, để khỏi mở/đóng bảng vô ích trước mọi prompt còn lại.

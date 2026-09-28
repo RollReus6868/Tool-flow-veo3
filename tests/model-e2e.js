@@ -130,6 +130,57 @@ exports.run = async function (x) {
     ok('để trống kế hoạch: model trên trang giữ nguyên', (await modelTrang()) === FAST);
     await chuanBiModel(tab, { runMode: 'image', chonModel: { chinh: LP } });
     ok('mẻ ẢNH: không áp kế hoạch model video', tab.keHoachModel === null);
+
+    // ── 8. (2.8.7) Flow BỎ Lower Priority, người dùng còn lưu tên đó ─────
+    //  Nhật ký 28/09/2026: "Flow có 4 model: Omni 1.1 Flash · Veo 3.1 - Lite ·
+    //  Veo 3.1 - Fast · Veo 3.1 - Quality". Kế hoạch cũ còn ghi Lower Priority.
+    //  Trước 2.8.7: app mở hộp chọn model trước mỗi prompt, báo lỗi, tới lần
+    //  thứ ba mới tắt kế hoạch. Nay: đọc danh sách MỘT lần ở đầu mẻ, bỏ tên đó,
+    //  nói rõ một dòng, và không đụng hộp chọn model trong suốt mẻ.
+    //
+    //  Bắt dòng nhật ký bằng cách nghe console.log — logToUi ghi ra đó.
+    const dong = [];
+    const logGoc = console.log;
+    console.log = (...a) => { dong.push(a.join(' ')); logGoc(...a); };
+    try {
+      const conLai = await js(`window.__fixtureBoModel(${JSON.stringify(LP)})`);
+      ok('trang giả lập đã bỏ Lower Priority', !conLai.includes(LP), conLai.join(' · '));
+      await js(`window.__fixtureDatModel(${JSON.stringify(FAST)})`);
+
+      const st8 = await chuanBiModel(tab, {
+        runMode: 'video', multiTab: true, multiTabStagger: 0,
+        chonModel: { chinh: LP, duPhong: LITE, thuLaiPhut: 30 }
+      });
+      ok('tên Lower Priority cũ: bỏ khỏi kế hoạch → không còn kế hoạch nào',
+         tab.keHoachModel === null, JSON.stringify(tab.keHoachModel));
+      ok('...không ép giãn cách vô ích', st8.multiTabStagger === 0, `multiTabStagger=${st8.multiTabStagger}`);
+      ok('...nói rõ một dòng "Flow KHÔNG còn model này"',
+         dong.filter((d) => /Flow KHÔNG còn model này/.test(d) && d.includes(LP)).length === 1,
+         dong.filter((d) => /model/i.test(d)).slice(-3).join(' | '));
+      ok('...và báo giữ nguyên model đang chọn', dong.some((d) => /giữ nguyên model đang chọn trên Flow/.test(d)));
+      ok('...model trên trang không bị đụng', (await modelTrang()) === FAST, `trang đang: ${await modelTrang()}`);
+
+      // ── 9. Model đã đúng sẵn: prompt đầu vẫn XÁC NHẬN thành lời ──────────
+      //  Nhật ký 28/09 17:15: kế hoạch "chính: Veo 3.1 - Lite" rồi… không một
+      //  dòng nào về model. Không phân biệt được "đã đúng" với "không chạy".
+      dong.length = 0;
+      const st9 = await chuanBiModel(tab, {
+        runMode: 'video', multiTab: true, multiTabStagger: 0, chonModel: { chinh: FAST }
+      });
+      ok('kế hoạch "chính = model đang chọn" vẫn được giao', !!tab.keHoachModel);
+      await tabManager.dispatch(tab.id, {
+        action: 'START_AUTOMATION',
+        data: { prompts: ['một con mèo'], videosToCreate: [{ index: 1, text: 'một con mèo' }], settings: st9 }
+      });
+      await doi(() => (tab.demPromptMoi || 0) >= 1, 45000);
+      const coXacNhan = await doi(() => dong.some((d) => d.includes(`Model đang là ${FAST}`) && /đúng kế hoạch/.test(d)), 15000);
+      ok('prompt đầu: ghi "Model đang là … — đúng kế hoạch"', coXacNhan,
+         dong.filter((d) => /🎚/.test(d)).slice(-3).join(' | '));
+      await tabManager.dispatch(tab.id, { action: 'STOP_AUTOMATION' });
+      await wait(1000);
+    } finally {
+      console.log = logGoc;
+    }
   } catch (e) {
     failures.push('Lỗi: ' + (e && e.stack || e));
   }

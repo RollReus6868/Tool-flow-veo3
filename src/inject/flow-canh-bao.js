@@ -100,6 +100,36 @@
     }
   };
 
+  // ── Lý do Flow ghi trên thẻ lỗi (2.8.7) ──────────────────────────────────
+  //
+  //  Engine chỉ ghi "Tạo thất bại (flow-error-tile)" — biết là hỏng, không
+  //  biết vì sao. Nhật ký 28/09/2026 17:16:13: video [1] của mẻ 427 prompt hỏng
+  //  đúng kiểu đó, và KHÔNG có cách nào biết là do prompt quá dài, do nội dung
+  //  bị chặn, hay do hết credit. Chữ đó nằm ngay trên thẻ — đọc ra là xong.
+  //
+  //  Trả về các câu KHÁC NHAU đang hiện trên thẻ lỗi (tối đa 5). Bỏ chữ biểu
+  //  tượng (Material Symbols vẽ icon bằng chữ: "error", "refresh", "more_vert"…)
+  //  vì chúng không phải lời Flow nói.
+  window.__flowDocLyDoTheLoi = function () {
+    try {
+      var the = document.querySelectorAll('flow-error-tile, .error-tile');
+      var ra = [];
+      for (var i = 0; i < the.length && ra.length < 5; i++) {
+        var el = the[i];
+        if (!dangHien(el)) continue;
+        var dong = String(el.innerText || el.textContent || '')
+          .split(/\n+/)
+          .map(function (s) { return s.replace(/\s+/g, ' ').trim(); })
+          .filter(function (s) { return s.length >= 3 && !/^[a-z0-9_]+$/.test(s); });
+        var cau = dong.join(' · ').slice(0, 300);
+        if (cau && ra.indexOf(cau) === -1) ra.push(cau);
+      }
+      return { ok: true, lyDo: ra, soThe: the.length };
+    } catch (e) {
+      return { ok: false, lyDo: [], soThe: 0, loi: e && e.message };
+    }
+  };
+
   // Cho bài kiểm thử đối chiếu danh sách với bản bên main.
   window.__flowCumTuChan = CUM_TU;
 })();

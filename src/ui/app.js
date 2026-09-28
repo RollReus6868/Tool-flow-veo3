@@ -642,9 +642,101 @@ const MODEL_O = {
   modelThuLai:  'thuLaiPhut'
 };
 
+// ── Danh sách model cho ba hộp chọn ───────────────────────────────────────
+//
+//  VÌ SAO LÀ HỘP CHỌN (2.8.7). Trước đây ba ô này là <input list="dsModel">
+//  — ô gõ chữ kèm gợi ý. Gợi ý của Chromium LỌC theo chữ đang có trong ô: ô
+//  đã ghi "Veo 3.1 - Lite" thì chỉ gợi ý những dòng chứa chữ đó, và một dòng
+//  trùng khít với chữ trong ô thì nó không hiện luôn. Sau khi Flow bỏ Lower
+//  Priority (09/2026) và người dùng bấm "Đọc danh sách", danh sách còn đúng
+//  một dòng khớp "Veo 3.1 - Lite" — chính nó — nên bấm vào ô KHÔNG hiện gì.
+//  Muốn đổi sang "Veo 3.1 - Fast" phải xoá chữ đi trước, điều không ai đoán
+//  ra. Đó là "không bấm chọn model chính được".
+//
+//  Danh sách mặc định là thứ Flow đang có (đọc từ nhật ký người dùng
+//  28/09/2026). Phải khớp MODEL_GOI_Y trong src/main/model.js — tests/run.js so.
+const DS_MODEL_MAC_DINH = ['Veo 3.1 - Lite', 'Veo 3.1 - Fast', 'Veo 3.1 - Quality', 'Omni 1.1 Flash'];
+let dsModelFlow = DS_MODEL_MAC_DINH.slice();
+let dsModelTuFlow = false;           // true = danh sách vừa đọc từ trang Flow thật
+const giaTriModelDaLuu = {};          // id ô → giá trị đã lưu, dùng khi dựng lại hộp
+
+const CHU_TRONG_MODEL = {
+  modelChinh:   '(giữ nguyên model đang chọn trên Flow)',
+  modelDuPhong: '(không — cho tài khoản nghỉ như cũ)',
+  modelPhu:     '(không xen kẽ)'
+};
+
+/** So tên model: bỏ khoảng trắng thừa, không phân biệt hoa thường. */
+function khoaModelUi(t) {
+  return String(t == null ? '' : t).replace(/\s+/g, ' ').trim().toLowerCase();
+}
+const laLowerPriorityUi = (t) => /lower\s*priority/i.test(String(t || ''));
+
+/**
+ * Dựng lại ba hộp chọn theo dsModelFlow, GIỮ lựa chọn hiện tại.
+ *
+ * Giá trị đã lưu mà Flow không còn (ví dụ "Veo 3.1 - Lite [Lower Priority]")
+ * KHÔNG bị lặng lẽ xoá: nó hiện thành một dòng "⚠ … Flow không còn model
+ * này" đang được chọn, để người dùng thấy và tự đổi. Xoá âm thầm thì lần sau
+ * mẻ chạy bằng model khác mà không ai biết vì sao.
+ */
+function veHopChonModel() {
+  for (const id of Object.keys(CHU_TRONG_MODEL)) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    // Nguồn sự thật là giaTriModelDaLuu (datChonModel và sự kiện 'change' ghi
+    // vào đó). Không dùng "el.value || đã lưu": người dùng CỐ Ý chọn dòng trống
+    // thì el.value là '' và giá trị cũ sẽ bị dựng lại ngoài ý họ.
+    const dangChon = String(giaTriModelDaLuu[id] !== undefined ? giaTriModelDaLuu[id] : (el.value || '')).trim();
+    const coTrongDs = !dangChon || dsModelFlow.some((t) => khoaModelUi(t) === khoaModelUi(dangChon));
+
+    const dong = [`<option value="">${escapeHtml(CHU_TRONG_MODEL[id])}</option>`];
+    for (const t of dsModelFlow) dong.push(`<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`);
+    if (!coTrongDs) {
+      dong.push(`<option value="${escapeHtml(dangChon)}">⚠ ${escapeHtml(dangChon)} — Flow không còn model này</option>`);
+    }
+    el.innerHTML = dong.join('');
+
+    // Chọn lại đúng dòng — so theo khoá để "veo 3.1 - lite" đã lưu vẫn khớp
+    // "Veo 3.1 - Lite" Flow đang ghi.
+    const khop = coTrongDs
+      ? (dsModelFlow.find((t) => khoaModelUi(t) === khoaModelUi(dangChon)) || '')
+      : dangChon;
+    el.value = khop;
+    el.classList.toggle('model-het', !coTrongDs);
+    giaTriModelDaLuu[id] = khop;
+  }
+  capNhatKhoiLowerPriority();
+  goiYXenKe();
+}
+
+/** Mục dự phòng chỉ có nghĩa khi Flow CÒN model Lower Priority. */
+function capNhatKhoiLowerPriority() {
+  const coLp = dsModelFlow.some(laLowerPriorityUi);
+  const khoi = document.getElementById('khoiLowerPriority');
+  const note = document.getElementById('lpDaBo');
+  if (khoi) khoi.classList.toggle('hidden', !coLp);
+  if (note) note.classList.toggle('hidden', coLp);
+}
+
+/** Nhận danh sách model vừa đọc từ trang Flow. Tách riêng để kiểm thử gọi thẳng. */
+function apDungDanhSachModel(ds) {
+  const sach = (ds || []).map((t) => String(t || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  if (!sach.length) return;
+  dsModelFlow = sach;
+  dsModelTuFlow = true;
+  veHopChonModel();
+}
+
 function docChonModel() {
   const m = {};
-  for (const id in MODEL_O) { const el = document.getElementById(id); if (el) m[MODEL_O[id]] = el.value.trim(); }
+  for (const id in MODEL_O) { const el = document.getElementById(id); if (el) m[MODEL_O[id]] = String(el.value || '').trim(); }
+  // Mục dự phòng đang ẩn (Flow không còn Lower Priority) thì KHÔNG gửi
+  // model dự phòng: nó chỉ chạy khi đang dùng Lower Priority, nên gửi đi chỉ
+  // làm nhật ký ghi một kế hoạch không bao giờ xảy ra, và làm app mở hộp chọn
+  // model trên Flow vô ích ở đầu mỗi mẻ.
+  const khoi = document.getElementById('khoiLowerPriority');
+  if (khoi && khoi.classList.contains('hidden')) m.duPhong = '';
   return m;
 }
 
@@ -652,9 +744,18 @@ function datChonModel(m) {
   if (!m) return;
   for (const id in MODEL_O) {
     const el = document.getElementById(id);
-    if (el && m[MODEL_O[id]] !== undefined && m[MODEL_O[id]] !== null) el.value = m[MODEL_O[id]];
+    const v = m[MODEL_O[id]];
+    if (!el || v === undefined || v === null) continue;
+    if (el.tagName === 'SELECT') {
+      // Ghi vào chỗ đệm TRƯỚC rồi mới dựng hộp: gán thẳng .value một tên chưa
+      // có trong hộp thì select trả về '' và giá trị đã lưu mất luôn.
+      giaTriModelDaLuu[id] = String(v).trim();
+      el.value = '';
+    } else {
+      el.value = v;
+    }
   }
-  goiYXenKe();
+  veHopChonModel();
 }
 
 /** Nói bằng lời xen kẽ đang đặt ra sao — con số trơn dễ hiểu nhầm. */
@@ -893,9 +994,22 @@ $$('input[name="runMode"]').forEach((el) =>
 Object.keys(MODEL_O).forEach((id) => {
   const el = document.getElementById(id);
   if (!el) return;
-  el.addEventListener('change', () => { goiYXenKe(); scheduleSave(); });
+  el.addEventListener('change', () => {
+    // Hộp chọn: ghi lựa chọn mới vào chỗ đệm để lần dựng lại hộp (sau khi
+    // "Đọc danh sách") giữ đúng thứ người dùng vừa chọn, kể cả dòng trống.
+    if (el.tagName === 'SELECT') {
+      giaTriModelDaLuu[id] = el.value;
+      el.classList.remove('model-het');
+    }
+    goiYXenKe();
+    scheduleSave();
+  });
   el.addEventListener('input', goiYXenKe);
 });
+
+// Dựng ba hộp chọn model ngay lúc nạp trang — nếu không, người chưa từng lưu
+// cài đặt model sẽ thấy ba hộp rỗng không có lựa chọn nào.
+veHopChonModel();
 
 // ── Đọc danh sách model thẳng từ trang Flow ───────────────────────────────
 //  Vừa để điền gợi ý đúng chữ Flow đang dùng, vừa là phép thử nhanh "app có
@@ -912,10 +1026,18 @@ $('#btnDocModel').addEventListener('click', async () => {
       `Chi tiết đã ghi vào Nhật ký — gửi dòng đó kèm ảnh chụp nếu cần sửa.`;
     return;
   }
-  const dl = $('#dsModel');
-  dl.innerHTML = r.ds.map((t) => `<option value="${escapeHtml(t)}">`).join('');
+  // Dựng lại ba hộp chọn bằng đúng chữ Flow đang ghi. Lựa chọn hiện tại được
+  // giữ; cái nào Flow không còn thì hiện dòng ⚠ để người dùng tự đổi.
+  apDungDanhSachModel(r.ds);
+  const het = Object.keys(CHU_TRONG_MODEL)
+    .map((k) => document.getElementById(k))
+    .filter((el) => el && el.classList.contains('model-het'))
+    .map((el) => el.value);
   out.innerHTML = `✅ ${escapeHtml(id)} — Flow đang có: ` + r.ds.map((t) => `<b>${escapeHtml(t)}</b>`).join(' · ') +
-    (r.dangChon ? `<br>Đang chọn: <b>${escapeHtml(r.dangChon)}</b>` : '');
+    (r.dangChon ? `<br>Đang chọn: <b>${escapeHtml(r.dangChon)}</b>` : '') +
+    (het.length
+      ? `<br><span style="color:#fcd34d">⚠ Flow không còn: <b>${het.map(escapeHtml).join(', ')}</b> — chọn lại ở hộp tương ứng phía trên.</span>`
+      : '');
 });
 
 // ── Đặt nhịp chạy "hiền" theo số tab ──────────────────────────────────────

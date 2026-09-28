@@ -575,3 +575,7 @@ td.file { font-size: 11.5px; color: var(--text-dim); word-break: break-all; }
 .capnhat-tien-do > div { height:100%; width:0; background:#3b82f6; transition:width .3s; }
 /* .pill đặt display:inline-flex nên thuộc tính hidden bị lấn — phải nói rõ. */
 .pill-cap-nhat[hidden], .capnhat-tien-do[hidden] { display:none !important; }
+
+/* Hộp chọn model đang giữ một tên Flow không còn (2.8.7): viền vàng để nổi
+   bật, người dùng thấy ngay mà đổi — không lặng lẽ xoá giá trị đã lưu. */
+select.model-het { border-color:#f59e0b; box-shadow:0 0 0 1px #f59e0b inset; color:#fcd34d; }

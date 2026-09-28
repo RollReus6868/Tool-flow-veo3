@@ -157,6 +157,15 @@ window.__fixtureModel = () => model;
 // "Lite" đứng trước — đảo lại thì mới lộ.
 window.__fixtureDaoThuTu = () => { MODELS.reverse(); ve(); return MODELS.map((m) => m[0]); };
 window.__fixtureDatModel = (m) => { model = m; ve(); return model; };
+// Flow BỎ một model khỏi danh sách — dựng lại đúng cảnh 09/2026, khi Flow bỏ
+// "Veo 3.1 - Lite [Lower Priority]". Trả về danh sách còn lại.
+window.__fixtureBoModel = (ten) => {
+  const i = MODELS.findIndex((m) => m[0] === ten);
+  if (i >= 0) MODELS.splice(i, 1);
+  if (model === ten) model = MODELS[0][0];
+  ve();
+  return MODELS.map((m) => m[0]);
+};
 window.__fixtureMo = () => ({ bang: moBang, ds: moDs });
 ve();
 </script>
