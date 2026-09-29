@@ -1885,6 +1885,26 @@ test('model ảnh: mặc định Nano Banana 2 Lite, áp sau khi đổi sang ch�
   assert.ok(/tab\.modelHienTai = null/.test(dma), 'chọn model ảnh xong phải xoá modelHienTai (của kế hoạch video)');
 });
 
+// ── 2.8.9a: đóng gói macOS — hai DMG không được trùng tên ổ đĩa ────────────
+test('macOS: DMG arm64 và x64 gắn vào hai ổ đĩa khác tên', () => {
+  // Lỗi CI 2.8.9: dmg.title không có ${arch} → cả hai bản cùng gắn vào
+  // /Volumes/Flow Automation Studio <ver>, bản này tháo ổ của bản kia →
+  // "hdiutil create/detach … Exit code 1". Tính tên đúng như dmg-builder làm
+  // (node_modules/dmg-builder/out/dmg.js → computeVolumeName).
+  const pkg = JSON.parse(docNguon('package.json'));
+  const title = pkg.build && pkg.build.dmg && pkg.build.dmg.title;
+  assert.ok(title, 'thiếu build.dmg.title');
+  assert.ok(title.includes('${arch}'), 'dmg.title phải có ${arch} — nếu không hai bản DMG trùng ổ đĩa');
+  let hauTo;
+  try { hauTo = require('builder-util/out/arch').getArchSuffix; } catch (_) { hauTo = null; }
+  const ten = (arch) => title
+    .replace(/\$\{arch\}/g, hauTo ? hauTo(arch === 'x64' ? 1 : 3, undefined) : (arch === 'x64' ? '' : '-arm64'))
+    .replace(/\$\{version\}/g, pkg.version).replace(/\$\{productName\}/g, pkg.productName);
+  assert.notStrictEqual(ten('x64'), ten('arm64'), `trùng tên ổ đĩa: ${ten('x64')}`);
+  // Vòng thử lại trong build-mac.yml là lớp phòng thêm, KHÔNG kiểm ở đây: file
+  // workflow phải chép tay vào máy người dùng, thiếu nó thì CI vẫn phải chạy được.
+});
+
 // ── Kết luận ───────────────────────────────────────────────────────────────
 (async () => {
 await Promise.all(choAsync);

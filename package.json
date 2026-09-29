@@ -90,7 +90,7 @@
       }
     },
     "dmg": {
-      "title": "Flow Automation Studio ${version}",
+      "title": "Flow Automation Studio ${version}${arch}",
       "contents": [
         {
           "x": 150,

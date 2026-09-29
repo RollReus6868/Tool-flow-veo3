@@ -231,6 +231,24 @@ gồm lưới kết quả; ảnh nhỏ < 20 px và biểu tượng trong nút c�
 nhận chuột thật: mỗi cú `Input.dispatchMouseEvent` chờ 5 giây rồi rơi mất
 (`isPainting() = false`). Vì vậy gỡ ảnh đi bằng JavaScript trước.
 
+### Sửa thêm: đóng gói macOS hỏng ở bước tạo DMG (CI)
+
+**Triệu chứng.** Job `mac / build`, bước "Dong goi": `unable to execute hdiutil create …`
+rồi hàng loạt `hdiutil detach -quiet /Volumes/Flow Automation Studio 2.8.9 … Exit code 1`.
+
+**Nguyên nhân gốc.** `build.dmg.title` trong `package.json` là
+`Flow Automation Studio ${version}` — không có `${arch}`. electron-builder đóng DMG
+arm64 và x64 song song, và cả hai gắn vào CÙNG một ổ `/Volumes/Flow Automation Studio 2.8.9`.
+dmg-builder thấy ổ đó đang có thì tháo trước khi gắn (`dmg.js`: "unmounting previous disk
+image") — tức bản này tháo ổ của bản kia đang dùng. Các bản trước lọt vì may nhanh chậm
+khác nhau; lần này hai bản đụng nhau.
+
+**Sửa.** `dmg.title` thành `Flow Automation Studio ${version}${arch}` (x64 giữ nguyên tên,
+arm64 thêm `-arm64` — đúng cách dmg-builder tự đặt khi không có title). Bước Đóng gói
+macOS thử lại tối đa 3 lần, giữa các lần tháo ổ DMG còn treo, phòng lỗi "Resource busy"
+thỉnh thoảng gặp trên máy Mac của GitHub. Bước kiểm cuối đòi đủ 4 file (dmg + zip × 2 kiến
+trúc). Bài kiểm tĩnh mới trong `tests/run.js` tính tên ổ đĩa như dmg-builder và đòi hai tên khác nhau.
+
 ### Đồng hồ quy trình trên từng tab
 
 Thẻ tiến độ từng tab có thêm dòng `⏱ Đã chạy 12:37 · còn ~25:27 · xong khoảng 19:59`,
