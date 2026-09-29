@@ -248,6 +248,38 @@ exports.run = async function (x) {
       nhipTT.huy(tab);
       nhipTT.ganChoTab(tab, {});
       await wait(1000);
+
+      // ── 11. (2.8.9) Ảnh tham chiếu dính trong ô nhập — qua đường app thật ──
+      //  Tab thật (TabManager tiêm đủ các chặng, kể cả flow-anh-tham-chieu.js),
+      //  gọi đúng handler INJECT_PASTE của main.js như engine gọi.
+      const tab2 = await tabManager.create(null, 'file://' + path.join(__dirname, 'fixture-tham-chieu.html'));
+      ok('tab ô nhập giả lập sẵn sàng', await doi(() => tab2.ready));
+      const js2 = (c) => tab2.view.webContents.executeJavaScript(c, true);
+      ok('flow-anh-tham-chieu.js đã được tiêm vào tab', await js2('typeof window.__flowDemAnhThamChieu === "function"'));
+      // Tab chạy NGẦM: Chromium bỏ chuột thật gửi tới khung đang ẩn (đo ở đây:
+      // mỗi cú chờ 5 s rồi rơi mất). Nên đường gỡ phải đi bằng JavaScript
+      // trước — ảnh gắn kiểu 'js' là nút ✕ nhận được cú bấm đó.
+      await js2(`window.__fixtureDinhAnh('js')`);
+      tab2.goAnhTC = true; tab2.dungAnhTC = false; tab2.soAnhTC = 0;
+      dong.length = 0;
+      const logGoc3 = console.log;
+      console.log = (...a) => { dong.push(a.join(' ')); logGoc(...a); };
+      const kq = await handleEngineMessage({ action: 'INJECT_PASTE', data: { text: 'một ngọn hải đăng lúc bình minh' } },
+        tab2.view.webContents);
+      console.log = logGoc3;
+      ok('INJECT_PASTE: gỡ ảnh dính rồi mới dán', (await js2('window.__fixtureSoChip()')) === 0 && kq && kq.ok,
+        `chip còn ${await js2('window.__fixtureSoChip()')}, kq=${JSON.stringify(kq && { ok: kq.ok, error: kq.error })}`);
+      ok('...nhật ký nói bước nào làm dính và đã gỡ',
+        dong.some((d) => /Ô nhập vừa có thêm 1 ảnh tham chiếu/.test(d)) && dong.some((d) => /Đã gỡ 1 ảnh tham chiếu/.test(d)),
+        dong.filter((d) => /🧷|🧹/.test(d)).join(' | '));
+      ok('...chữ đã vào ô nhập', /hải đăng/.test(await js2(`document.querySelector('.ProseMirror').innerText`)));
+
+      // Mẻ có Character Sync: KHÔNG gỡ (engine vừa cố ý gắn ảnh).
+      await js2(`document.querySelector('.ProseMirror').innerHTML = ''; window.__fixtureDinhAnh('js')`);
+      tab2.goAnhTC = false; tab2.dungAnhTC = true;
+      await handleEngineMessage({ action: 'INJECT_PASTE', data: { text: 'con mèo @Mimi' } }, tab2.view.webContents);
+      ok('mẻ Character Sync: giữ nguyên ảnh', (await js2('window.__fixtureSoChip()')) === 1);
+      try { tabManager.close(tab2.id); } catch (_) {}
     } finally {
       console.log = logGoc;
     }

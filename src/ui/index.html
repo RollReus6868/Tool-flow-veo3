@@ -278,6 +278,22 @@
       <label class="switchline"><input type="checkbox" id="randomScroll"><span class="sw"></span><span>Cuộn trang ngẫu nhiên giữa các lần tạo</span></label>
     </div>
 
+    <div class="card" id="theModelAnh">
+      <div class="card-head"><h3>🍌 Model ảnh</h3></div>
+      <div class="field">
+        <label class="label" for="modelAnh">Model dùng cho mẻ ảnh</label>
+        <select id="modelAnh">
+          <option value="">(giữ nguyên model đang chọn trên Flow)</option>
+          <option value="Nano Banana 2 Lite" selected>Nano Banana 2 Lite</option>
+        </select>
+      </div>
+      <p class="hint" id="modelAnhHint">
+        Trước mỗi mẻ ảnh (kể cả mẻ ảnh đầu của chuỗi ảnh → video), app tự chọn model này trên Flow.
+        Muốn thấy đủ model ảnh Flow đang có: để tab Flow ở chế độ <b>Tạo ảnh</b> rồi bấm
+        <b>Đọc danh sách model</b> ở thẻ Model video bên dưới — danh sách ảnh sẽ tự điền vào đây.
+      </p>
+    </div>
+
     <div class="card" id="theModelVideo">
       <div class="card-head"><h3>🎚 Model video</h3></div>
       <p class="hint" style="margin-bottom:10px">
@@ -442,6 +458,11 @@
       <label class="switchline"><input type="checkbox" id="charSync"><span class="sw"></span><span>Character Sync bằng <code>@Tên</code></span></label>
       <label class="switchline"><input type="checkbox" id="charSyncStripTag"><span class="sw"></span><span>Xoá hẳn <code>@Tên</code> khỏi câu lệnh gửi Flow</span></label>
       <label class="switchline"><input type="checkbox" id="keyframeSync"><span class="sw"></span><span>Đồng bộ khung hình đầu/cuối (chỉ chế độ video)</span></label>
+      <label class="switchline"><input type="checkbox" id="goAnhThamChieu" checked><span class="sw"></span><span><b>Gỡ ảnh tham chiếu bị dính</b> vào ô nhập trước khi dán</span></label>
+      <p class="hint" style="margin:2px 0 8px">
+        Chỉ áp cho mẻ <b>không</b> bật Character Sync / khung hình (mẻ đó app không gắn ảnh nào, nên ảnh nằm
+        trong ô nhập là ảnh dính từ prompt trước). Tắt đi nếu bạn tự gắn sẵn một ảnh cho cả mẻ.
+      </p>
       <label class="switchline"><input type="checkbox" id="voiceSync"><span class="sw"></span><span>Tự chọn giọng nói (chỉ chế độ video)</span></label>
       <div class="field">
         <label class="label" for="voiceSelect">Giọng nói</label>

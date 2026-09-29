@@ -200,9 +200,12 @@ async function run(mainWindow, app) {
   await wc.executeJavaScript(`
     window.__testProgress({
       perTab: [
-        { tabId: 'tab1', accountName: 'Tài khoản chính', busy: true,  assigned: 20, done: 7, running: 2, failed: 1, phase: 'image' },
-        { tabId: 'tab2', accountName: 'Tài khoản chính', busy: true,  assigned: 20, done: 12, running: 1, failed: 0, phase: null },
-        { tabId: 'tab3', accountName: 'Acc phụ 1',       busy: false, assigned: 15, done: 15, running: 0, failed: 0, phase: 'video' }
+        { tabId: 'tab1', accountName: 'Tài khoản chính', busy: true,  assigned: 20, done: 7, running: 2, failed: 1, phase: 'image',
+          thoiGian: { batDau: Date.now() - 754000, xongLuc: Date.now() + 1530000, ketThuc: null, nguon: 'thuc-te+mac-dinh' } },
+        { tabId: 'tab2', accountName: 'Tài khoản chính', busy: true,  assigned: 20, done: 12, running: 1, failed: 0, phase: null,
+          thoiGian: { batDau: Date.now() - 3725000, xongLuc: Date.now() + 480000, ketThuc: null, nguon: 'thuc-te' } },
+        { tabId: 'tab3', accountName: 'Acc phụ 1',       busy: false, assigned: 15, done: 15, running: 0, failed: 0, phase: 'video',
+          thoiGian: { batDau: Date.now() - 2000000, xongLuc: Date.now() - 400000, ketThuc: Date.now() - 400000, nguon: 'xong' } }
       ],
       tong: { done: 34, running: 3, failed: 1, assigned: 55 }
     })
@@ -217,6 +220,18 @@ async function run(mainWindow, app) {
     [...document.querySelectorAll('#tabProgress .tprow')].map(r =>
       [...r.querySelectorAll('.tprow-act button')].map(b => b.textContent).join(''))
   `);
+  // 2.8.9: đồng hồ quy trình trên từng tab, tự nhích mỗi giây.
+  const tg1 = await wc.executeJavaScript(`[...document.querySelectorAll('#tabProgress .tg')].map(e => e.textContent)`);
+  await wait(2100);
+  const tg2 = await wc.executeJavaScript(`[...document.querySelectorAll('#tabProgress .tg')].map(e => e.textContent)`);
+  if (tg1.length !== 3 || !/Đã chạy 12:3\d · còn ~25:\d\d · xong khoảng \d\d:\d\d/.test(tg1[0]) ||
+      !/Đã chạy 1:02:0\d/.test(tg1[1]) || !/Đã chạy 26:40 · dừng\/xong lúc/.test(tg1[2])) {
+    failures.push('Đồng hồ quy trình hiện sai: ' + JSON.stringify(tg1));
+  } else note('Đồng hồ quy trình: đã chạy · còn · xong khoảng — đúng cho tab đang chạy và tab đã xong');
+  if (tg2[0] === tg1[0] || tg2[2] !== tg1[2]) {
+    failures.push('Đồng hồ không nhích (hoặc tab đã xong vẫn chạy): ' + JSON.stringify([tg1, tg2]));
+  } else note('Đồng hồ tự nhích mỗi giây; tab đã xong đứng yên');
+
   if (!(nut[0].includes('⏹') && nut[2].includes('⏵'))) {
     failures.push('Nút điều khiển riêng từng tab sai: ' + JSON.stringify(nut));
   } else note('Mỗi tab có nút điều khiển riêng');
@@ -338,6 +353,40 @@ async function run(mainWindow, app) {
 
   // Trả về trống để các bước sau chạy như bản cũ.
   await wc.executeJavaScript(`datChonModel({ chinh: '', phu: '', duPhong: '', xenKeMoi: 0 }); true`);
+
+  // ── 3e2c. Model ảnh (2.8.9) + công tắc gỡ ảnh tham chiếu ─────────────
+  const ma = await wc.executeJavaScript(`
+    (() => {
+      const s = window.__collectSettings();
+      const kq = { mac: s.modelAnh, go: s.goAnhThamChieu };
+      // Đọc danh sách ở chế độ ẢNH → điền hộp Model ảnh, không đè model video.
+      themLuaChonModelAnh(['Nano Banana 2 Lite', 'Nano Banana Pro']);
+      const el = document.querySelector('#modelAnh');
+      kq.ds = [...el.options].map((o) => o.value);
+      el.value = 'Nano Banana Pro'; el.dispatchEvent(new Event('change'));
+      kq.doi = window.__collectSettings().modelAnh;
+      // Nạp lại cài đặt có tên chưa có trong hộp: không được mất.
+      applySettings({ ...window.__collectSettings(), modelAnh: 'Imagen 5' });
+      kq.nap = el.value;
+      document.querySelector('#theModelAnh').scrollIntoView({ block: 'center' });
+      return kq;
+    })()
+  `);
+  if (ma.mac !== 'Nano Banana 2 Lite') failures.push('Model ảnh mặc định sai: ' + ma.mac);
+  else note('Model ảnh mặc định: Nano Banana 2 Lite');
+  if (ma.go !== true) failures.push('Gỡ ảnh tham chiếu dính phải bật sẵn: ' + ma.go);
+  else note('Gỡ ảnh tham chiếu dính: bật sẵn');
+  if (ma.doi !== 'Nano Banana Pro' || ma.nap !== 'Imagen 5' || !ma.ds.includes('Nano Banana Pro')) {
+    failures.push('Hộp Model ảnh chọn/nạp sai: ' + JSON.stringify(ma));
+  } else note('Hộp Model ảnh: điền danh sách, chọn, nạp lại tên lạ đều giữ đúng');
+  await wait(400);
+  {
+    const img = await wc.capturePage();
+    fs.writeFileSync(path.join(SHOT_DIR, 'run-model-anh.png'), img.toPNG());
+    note('Đã chụp run-model-anh.png');
+  }
+  await wc.executeJavaScript(`(() => { const el = document.querySelector('#modelAnh');
+    el.value = 'Nano Banana 2 Lite'; el.dispatchEvent(new Event('change')); return true; })()`);
 
   // ── 3e2b. Nghỉ giữa các thao tác (2.8.8) ─────────────────────────────
   //  a. mặc định TẮT, hai ô mờ; b. bật lên → collectSettings() gửi đúng ba

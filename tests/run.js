@@ -1629,7 +1629,7 @@ test('model: đầu mẻ kiểm danh sách thật, prompt đầu luôn xác nh�
   assert.ok(cb.indexOf('locTheoDanhSach') < cb.indexOf('tab.keHoachModel = k'),
     'phải lọc kế hoạch trước khi giao nó cho tab');
 
-  const dm = than('async function datModel');
+  const dm = than('async function datModel(tab, ten');
   assert.ok(/baoKhiGiuNguyen/.test(dm) && /đúng kế hoạch/.test(dm),
     'datModel vẫn im lặng khi model đã đúng — nhật ký không phân biệt được "đã đúng" với "không chạy"');
   assert.ok(/datModel\(tab, model, lyDo, tab\.demPromptMoi === 1\)/.test(m),
@@ -1775,6 +1775,114 @@ test('nhịp thao tác: giao diện có ô và gửi đi đúng khoá', () => {
   const nt = docNguon('src', 'main', 'nhip-thao-tac.js');
   for (const k of ['nghiThaoTacBat', 'nghiThaoTacMin', 'nghiThaoTacMax'])
     assert.ok(nt.includes('r.' + k), `nhip-thao-tac.js không đọc ${k}`);
+});
+
+// ── 2.8.9: thời gian quy trình, ảnh tham chiếu dính, model ảnh ────────────
+const TG = require('../src/main/thoi-gian');
+
+test('thời gian: đồng hồ quy trình và dự đoán lúc xong (cả mẻ video nối sau)', () => {
+  const t0 = 1_000_000;
+  // Mẻ 10 ảnh, sẽ nối 10 video. Sau 120 s xong 2 ảnh → 60 s/ảnh.
+  let q = TG.batDau(t0, 'image', 10, 10);
+  let u = TG.uocTinh(q, { done: 2, failed: 0 }, {}, t0 + 120000);
+  assert.strictEqual(u.daChayMs, 120000);
+  assert.strictEqual(u.conLaiMs, 8 * 60000 + 10 * TG.MAC_DINH_MS.video, 'còn = 8 ảnh × 60 s + 10 video × mặc định');
+  assert.strictEqual(u.xongLuc, t0 + 120000 + u.conLaiMs);
+  assert.ok(/thuc-te/.test(u.nguon));
+  // Lỗi cũng là đã xử lý xong (không chạy lại).
+  u = TG.uocTinh(q, { done: 1, failed: 1 }, {}, t0 + 120000);
+  assert.strictEqual(u.conLaiMs, 8 * 60000 + 10 * TG.MAC_DINH_MS.video);
+  // Có lịch sử video thì dùng lịch sử cho mẻ chờ nối.
+  u = TG.uocTinh(q, { done: 2 }, { video: 90000 }, t0 + 120000);
+  assert.strictEqual(u.conLaiMs, 8 * 60000 + 10 * 90000);
+  // Chưa xong cái nào: dùng lịch sử, trừ phần đã chạy, nhưng còn ≥ nửa prompt.
+  u = TG.uocTinh(TG.batDau(t0, 'image', 3, 0), { done: 0 }, { image: 40000 }, t0 + 30000);
+  assert.strictEqual(u.conLaiMs, 3 * 40000 - 30000);
+  assert.strictEqual(u.nguon, 'lich-su');
+  u = TG.uocTinh(TG.batDau(t0, 'image', 1, 0), { done: 0 }, {}, t0 + 999999);
+  assert.strictEqual(u.conLaiMs, TG.MAC_DINH_MS.image * 0.5, 'prompt đầu chạy lâu hơn dự kiến: không về 0');
+  assert.strictEqual(u.nguon, 'mac-dinh');
+  // Đang nghỉ hạ nhiệt: cộng thời gian nghỉ còn lại.
+  const coNghi = TG.uocTinh(q, { done: 2 }, {}, t0 + 120000, 5 * 60000);
+  assert.strictEqual(coNghi.conLaiMs, 8 * 60000 + 10 * TG.MAC_DINH_MS.video + 5 * 60000);
+  // Sang mẻ video: đồng hồ tổng GIỮ NGUYÊN, không đặt lại.
+  q = TG.sangPhaVideo(q, t0 + 600000, 10);
+  u = TG.uocTinh(q, { done: 0 }, {}, t0 + 600000);
+  assert.strictEqual(u.batDau, t0);
+  assert.strictEqual(u.daChayMs, 600000);
+  assert.strictEqual(u.conLaiMs, 10 * TG.MAC_DINH_MS.video);
+  // Xong: đồng hồ đứng.
+  q = TG.ketThuc(q, t0 + 1600000);
+  u = TG.uocTinh(q, { done: 10 }, {}, t0 + 9999999);
+  assert.strictEqual(u.daChayMs, 1600000);
+  assert.strictEqual(u.conLaiMs, 0);
+  assert.strictEqual(TG.ketThuc(q, t0 + 1).ketThuc, t0 + 1600000, 'kết thúc hai lần không dời mốc');
+  // Lịch sử: trộn nửa cũ nửa mới.
+  assert.deepStrictEqual(TG.ghiLichSu({}, 'image', 50000), { image: 50000 });
+  assert.deepStrictEqual(TG.ghiLichSu({ image: 50000 }, 'image', 70000), { image: 60000 });
+  assert.strictEqual(TG.dinhDang(3725000), '1:02:05');
+  assert.strictEqual(TG.dinhDang(65000), '1:05');
+  assert.strictEqual(TG.uocTinh(null), null);
+});
+
+test('thời gian: nối đúng chỗ trong main.js và giao diện', () => {
+  const boGhiChu = (t) => t.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const m = boGhiChu(docNguon('main.js'));
+  assert.ok(/thoiGian: tg\.uocTinh\(t\.quyTrinh/.test(thanHam(m, 'function tabStatsPayload')), 'bảng tiến độ chưa gửi thoiGian');
+  assert.ok(/tab\.quyTrinh = tg\.batDau\(/.test(m), 'bấm Bắt đầu chưa khởi động đồng hồ');
+  const chuoi = thanHam(m, 'async function chayTiepChuoi');
+  assert.ok(/tab\.quyTrinh = tg\.sangPhaVideo\(/.test(chuoi), 'mẻ video nối sau chưa giữ đồng hồ quy trình');
+  assert.strictEqual((chuoi.match(/ketThucQuyTrinh\(tab\)/g) || []).length, 3, 'ba đường chuỗi bị huỷ phải dừng đồng hồ');
+  const dung = m.slice(m.indexOf("case 'AUTOMATION_STOPPED'"), m.indexOf("case 'ACQUIRE_DOWNLOAD_LOCK'"));
+  assert.ok(/ketThucQuyTrinh\(tab\)/.test(dung) && /chain\.phase === 'image'/.test(dung),
+    'AUTOMATION_STOPPED phải dừng đồng hồ, trừ khi còn mẻ video chờ nối');
+  const ui = docNguon('src', 'ui', 'app.js');
+  assert.ok(/\$\{htmlThoiGian\(t\.thoiGian\)\}/.test(ui), 'thẻ tiến độ tab chưa hiện thời gian');
+  assert.ok(/setInterval\(\(\) => \{\s*const now = Date\.now\(\);\s*document\.querySelectorAll\('#tabProgress \.tg'\)/.test(ui),
+    'đồng hồ trên giao diện chưa tự nhích mỗi giây');
+});
+
+test('ảnh tham chiếu dính: nối đúng chỗ', () => {
+  const boGhiChu = (t) => t.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const m = boGhiChu(docNguon('main.js'));
+  const dan = m.slice(m.indexOf("case 'INJECT_PASTE'"), m.indexOf("case 'INJECT_CLICK_CREATE'"));
+  assert.ok(dan.indexOf('donAnhThamChieuTruocKhiDan(tab)') >= 0 &&
+    dan.indexOf('donAnhThamChieuTruocKhiDan(tab)') < dan.indexOf('pastePrompt('), 'phải gỡ ảnh dính TRƯỚC khi dán');
+  const don = thanHam(m, 'async function donAnhThamChieuTruocKhiDan');
+  assert.ok(/tab\.goAnhTC/.test(don) && /thamChieu\.goHet\(/.test(don), 'chỉ gỡ khi mẻ cho phép (tab.goAnhTC)');
+  assert.ok(/tab\.dungAnhTC\) return null/.test(thanHam(m, 'async function theoDoiAnhThamChieu')),
+    'mẻ Character Sync / khung hình: không được theo dõi (lẫn ảnh cố ý)');
+  // Đếm sau từng bước để lần ra bước nào làm ảnh dính.
+  assert.ok(/theoDoiAnhThamChieu\(tab, `đổi tên/.test(m), 'chưa đếm sau bước đổi tên');
+  assert.ok(/theoDoiAnhThamChieu\(tab, 'mở menu thẻ/.test(m), 'chưa đếm sau khi mở menu tải');
+  assert.ok(/theoDoiAnhThamChieu\(t, 'tải về'\)/.test(m), 'chưa đếm sau khi tải xong');
+  assert.ok(/theoDoiAnhThamChieu\(tab, 'bấm Tạo'\)/.test(m), 'chưa đếm sau khi bấm Tạo');
+  assert.strictEqual((m.match(/^\s+await ganAnhThamChieu\(tab, settings\);/gm) || []).length, 2, 'gắn luật ở cả hai chỗ giao việc');
+  const tabs = docNguon('src', 'main', 'tabs.js');
+  assert.ok(/flow-anh-tham-chieu\.js/.test(tabs) && /\['trình dò ảnh tham chiếu', this\.thamChieuSource\]/.test(tabs),
+    'tabs.js chưa tiêm flow-anh-tham-chieu.js');
+  const app = docNguon('src', 'ui', 'app.js');
+  const sw = app.slice(app.indexOf('const SWITCHES'), app.indexOf('];', app.indexOf('const SWITCHES')));
+  assert.ok(/'goAnhThamChieu'/.test(sw), 'công tắc gỡ ảnh chưa được lưu / gửi đi');
+  assert.ok(/id="goAnhThamChieu" checked/.test(docNguon('src', 'ui', 'index.html')), 'công tắc gỡ ảnh phải BẬT sẵn');
+});
+
+test('model ảnh: mặc định Nano Banana 2 Lite, áp sau khi đổi sang chế độ ảnh', () => {
+  const html = docNguon('src', 'ui', 'index.html');
+  assert.ok(/<option value="Nano Banana 2 Lite" selected>/.test(html), 'mặc định hộp Model ảnh phải là Nano Banana 2 Lite');
+  const app = docNguon('src', 'ui', 'app.js');
+  assert.ok(/const MODEL_ANH_MAC_DINH = 'Nano Banana 2 Lite'/.test(app));
+  const fields = app.slice(app.indexOf('const FIELDS'), app.indexOf('];', app.indexOf('const FIELDS')));
+  assert.ok(/'modelAnh'/.test(fields), 'modelAnh chưa được lưu / gửi đi');
+  assert.ok(/if \(s\.modelAnh\) themLuaChonModelAnh\(\[s\.modelAnh\]\)/.test(thanHam(app, 'function applySettings')),
+    'nạp lại cài đặt: tên model ảnh chưa có trong hộp sẽ bị mất');
+  const boGhiChu = (t) => t.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const m = boGhiChu(docNguon('main.js'));
+  const iCheDo = m.indexOf('if (settings.runMode) await datCheDo(tab, settings.runMode);');
+  const iAnh = m.indexOf("if (settings.runMode === 'image') await datModelAnh(tab, settings);");
+  assert.ok(iCheDo >= 0 && iAnh > iCheDo, 'phải chọn model ảnh SAU khi đã sang chế độ ảnh');
+  const dma = thanHam(m, 'async function datModelAnh');
+  assert.ok(/tab\.modelHienTai = null/.test(dma), 'chọn model ảnh xong phải xoá modelHienTai (của kế hoạch video)');
 });
 
 // ── Kết luận ───────────────────────────────────────────────────────────────

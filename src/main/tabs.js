@@ -63,6 +63,7 @@ class TabManager {
     this.canhBaoSource = fs.readFileSync(path.join(injectDir, 'flow-canh-bao.js'), 'utf8');
     this.modelSource   = fs.readFileSync(path.join(injectDir, 'flow-model.js'), 'utf8');
     this.bamTaoSource  = fs.readFileSync(path.join(injectDir, 'flow-bam-tao.js'), 'utf8');
+    this.thamChieuSource = fs.readFileSync(path.join(injectDir, 'flow-anh-tham-chieu.js'), 'utf8');
   }
 
   list() {
@@ -347,6 +348,8 @@ try {
       // SAU trình đổi chế độ: dùng chung __flowBamMotLan / __flowNhinThay.
       ['trình bấm nút Tạo', this.bamTaoSource],
       ['trình dò cảnh báo', this.canhBaoSource],
+      // 2.8.9 — đếm / chỉ chỗ gỡ ảnh tham chiếu dính trong ô nhập. Độc lập, không dùng hàm file khác.
+      ['trình dò ảnh tham chiếu', this.thamChieuSource],
       ['chốt hoàn tất', 'window.__flowEngineLoaded = true;']
     ];
 

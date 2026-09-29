@@ -244,6 +244,16 @@ async function typeIntoFocused(wc, text) {
  * thật, nên Flow nhận — kể cả khi tab đang ẩn (đã thử trong tests/bam-tao-that-main.js).
  * Đây cũng chính là đường app đã dùng để dán chữ (Input.insertText).
  */
+/** Rê chuột thật tới điểm (x, y) — cho nút chỉ hiện khi rê chuột vào (2.8.9). */
+async function reChuotThat(wc, x, y) {
+  if (!ensureDebugger(wc)) return { ok: false, error: 'Không bật được debugger' };
+  try {
+    await wc.debugger.sendCommand('Input.dispatchMouseEvent',
+      { type: 'mouseMoved', x: Math.round(x), y: Math.round(y), button: 'none', buttons: 0 });
+    return { ok: true };
+  } catch (err) { return { ok: false, error: err.message }; }
+}
+
 async function bamChuotThat(wc, x, y) {
   if (!ensureDebugger(wc)) return { ok: false, error: 'Không bật được debugger' };
   const X = Math.round(x), Y = Math.round(y);
@@ -259,4 +269,4 @@ async function bamChuotThat(wc, x, y) {
   }
 }
 
-module.exports = { pastePrompt, typeIntoFocused, ensureDebugger, bamChuotThat, EDITOR_SELECTORS };
+module.exports = { pastePrompt, typeIntoFocused, ensureDebugger, bamChuotThat, reChuotThat, EDITOR_SELECTORS };

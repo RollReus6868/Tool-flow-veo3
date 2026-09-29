@@ -1,10 +1,7 @@
-## Flow Automation Studio 2.8.8
+## Flow Automation Studio 2.8.9
 
-**Thêm: nghỉ ngẫu nhiên giữa các thao tác trong mỗi prompt.**
+- **Sửa lỗi ảnh của prompt trước dính vào prompt sau.** Đây không phải tính năng đồng nhất nhân vật. Mẻ nào không bật Character Sync thì trước khi dán prompt, app gỡ ảnh bị dính trong ô nhập. Nhật ký cũng ghi ảnh dính vào sau bước nào, để sửa tận gốc.
+- **Đồng hồ ở từng tab:** hiện thời gian đã chạy, thời gian còn lại và giờ dự kiến xong của cả quy trình, gồm cả mẻ video tự nối sau mẻ ảnh.
+- **Model ảnh mặc định là Nano Banana 2 Lite.** Đổi được ở thẻ Model ảnh mới.
 
-- Vào Cài đặt → Nhịp chạy & thử lại → bật **Nghỉ giữa các thao tác**, rồi chọn số giây tối thiểu và tối đa.
-- Trước mỗi bước (nhập prompt, bấm Tạo, đổi model, tải về, đổi tên) app nghỉ một khoảng ngẫu nhiên trong đoạn đó.
-- Bấm Tạm dừng hoặc Dừng là thôi nghỉ ngay.
-- Nhật ký ghi rõ mẻ nào đang nghỉ và nghỉ bao lâu.
-
-Mặc định tắt. Tài khoản, phiên đăng nhập, cài đặt và dự án giữ nguyên.
+Tài khoản, phiên đăng nhập, cài đặt và dự án giữ nguyên.

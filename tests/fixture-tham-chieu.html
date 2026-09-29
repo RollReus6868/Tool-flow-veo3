@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Google Flow — ô nhập có ảnh tham chiếu (giả lập)</title>
+<style>
+  body { font-family: system-ui, sans-serif; background:#0b0d13; color:#eee; margin:0; padding:20px; }
+  .grid { display:flex; gap:10px; margin-bottom:30px; }
+  .tile { width:160px; height:90px; border-radius:8px; overflow:hidden; }
+  .tile img { width:160px; height:90px; display:block; }
+  .composer { position:fixed; left:20px; right:20px; bottom:20px; padding:12px; border:1px solid #3a4258;
+              border-radius:14px; background:#161a24; }
+  .refs { display:flex; gap:8px; margin-bottom:8px; min-height:10px; }
+  .chip { position:relative; width:56px; height:56px; border-radius:8px; overflow:hidden; }
+  .chip img { width:56px; height:56px; display:block; }
+  .chip button { position:absolute; top:2px; right:2px; width:20px; height:20px; padding:0; border:0;
+                 border-radius:50%; background:#000a; color:#fff; opacity:0; }
+  .chip:hover button { opacity:1; }
+  .ProseMirror { min-height:40px; border:1px solid #444; border-radius:8px; padding:8px; }
+  .row { display:flex; gap:8px; align-items:center; margin-top:8px; }
+  .settings-trigger-button img { width:24px; height:24px; vertical-align:middle; }
+  .tiny { width:14px; height:14px; }
+</style>
+</head>
+<body>
+<div id="app">
+<!--
+  Giả lập ảnh người dùng gửi 29/09/2026: prompt sau mang theo ảnh của prompt
+  trước làm ảnh tham chiếu. Các bẫy:
+    • lưới kết quả cũng đầy <img> — KHÔNG được đếm;
+    • nút cài đặt có biểu tượng model là <img> 24px — KHÔNG được đếm;
+    • biểu tượng nhỏ 14px trong ô nhập — KHÔNG được đếm;
+    • nút ✕ của ảnh tham chiếu chỉ hiện khi rê chuột vào (opacity 0);
+    • nút ✕ chỉ nhận cú bấm THẬT (isTrusted), như nút Tạo của Flow —
+      trừ ảnh gắn bằng __fixtureDinhAnh('js'): nút đó nhận cả cú bấm JavaScript.
+-->
+<div class="grid">
+  <div class="tile" data-tile-id="t1"><img alt="001" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='90'><rect width='160' height='90' fill='%23346'/></svg>"></div>
+  <div class="tile" data-tile-id="t2"><img alt="002" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='90'><rect width='160' height='90' fill='%23634'/></svg>"></div>
+</div>
+
+<div class="composer">
+  <div class="refs" id="refs"></div>
+  <div class="ProseMirror" contenteditable="true" role="textbox"></div>
+  <div class="row">
+    <button class="settings-trigger-button" aria-haspopup="menu"><img alt="model" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24'><circle cx='12' cy='12' r='10' fill='gold'/></svg>"> Nano Banana 2 Lite · 16:9</button>
+    <img class="tiny" alt="i" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14'><rect width='14' height='14' fill='%23999'/></svg>">
+    <button class="generate-icon-button" aria-label="Start generation">Tạo</button>
+  </div>
+</div>
+</div>
+
+<script>
+window.__soLanGoGia = 0;   // số cú bấm ✕ do JavaScript tạo (bị bỏ qua)
+let dem = 0;
+window.__fixtureDinhAnh = (coNutGo = true) => {
+  dem++;
+  const chip = document.createElement('div');
+  chip.className = 'chip';
+  chip.innerHTML = `<img alt="ref${dem}" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='56' height='56'><rect width='56' height='56' fill='%23${(dem * 3) % 10}${(dem * 7) % 10}9'/></svg>">` +
+    (coNutGo ? '<button aria-label="Remove image"><i class="google-symbols">close</i></button>' : '');
+  const b = chip.querySelector('button');
+  if (b) b.addEventListener('click', (e) => {
+    if (!e.isTrusted && coNutGo !== 'js') { window.__soLanGoGia++; return; }   // mặc định: chỉ nhận chuột thật
+    if (coNutGo === 'chet') { window.__soLanBamChet++; return; }   // nút ✕ "chết": bấm thật cũng không gỡ
+    chip.remove();
+  });
+  document.getElementById('refs').appendChild(chip);
+  return document.querySelectorAll('#refs .chip').length;
+};
+window.__soLanBamChet = 0;
+// Nút Tạo nằm NGOÀI khối ô nhập, chung một khối với lưới kết quả — leo lên
+// tìm nút Tạo sẽ gặp khối ôm cả lưới. Phải dừng, không được đếm ảnh của lưới.
+window.__fixtureNutTaoRaNgoai = () => {
+  document.getElementById('app').appendChild(document.querySelector('.generate-icon-button'));
+  return true;
+};
+window.__fixtureSoChip = () => document.querySelectorAll('#refs .chip').length;
+</script>
+</body>
+</html>

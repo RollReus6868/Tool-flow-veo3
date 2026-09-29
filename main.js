@@ -23,6 +23,8 @@ const { buildJobs, splitJobs, buildStartMessage, planRun, planRunJobs, buildImag
 const anToan = require('./src/main/an-toan');
 const modelKH = require('./src/main/model');
 const nhipTT = require('./src/main/nhip-thao-tac');
+const thamChieu = require('./src/main/anh-tham-chieu');
+const tg = require('./src/main/thoi-gian');
 const { BoCapNhat, layRepo } = require('./src/main/cap-nhat');
 
 const APP_VERSION = require('./package.json').version;
@@ -337,6 +339,96 @@ function ganNhipThaoTac(tab, settings) {
   return k;
 }
 
+// ── ẢNH THAM CHIẾU DÍNH TRONG Ô NHẬP (2.8.9) ─────────────────────────────
+//  Ảnh người dùng gửi 29/09: prompt [2], [3] của mẻ ảnh mang theo ảnh của
+//  prompt trước làm tham chiếu, dù Character Sync không chạy. Chưa rõ bước
+//  nào làm ảnh dính (xem src/inject/flow-anh-tham-chieu.js), nên:
+//    • đếm sau từng bước, bước nào làm số tăng thì ghi tên bước đó;
+//    • trước khi dán, mẻ không dùng ảnh tham chiếu thì gỡ sạch.
+
+/** Gắn luật cho tab lúc giao mẻ, và đo mốc ban đầu. */
+async function ganAnhThamChieu(tab, settings) {
+  tab.goAnhTC = thamChieu.nenGo(settings);
+  // Mẻ có Character Sync / khung hình: engine tự gắn ảnh ngay trước khi dán,
+  // đếm ở đâu cũng lẫn ảnh cố ý với ảnh dính → không theo dõi, không gỡ.
+  tab.dungAnhTC = !!(settings && (settings.charSync || settings.keyframeSync));
+  tab.soAnhTC = null;
+  const d = await thamChieu.dem(tab.view.webContents);
+  if (!d.ok) return;
+  tab.soAnhTC = d.so;
+  if (d.so) {
+    logToUi('warning',
+      `🧷 [${tab.id}] Ô nhập đang có sẵn ${d.so} ảnh tham chiếu trước khi chạy` +
+      (tab.goAnhTC ? ' — sẽ gỡ trước khi dán prompt đầu.'
+        : ' — giữ nguyên (mẻ này dùng Character Sync / khung hình, hoặc bạn đã tắt "Gỡ ảnh tham chiếu bị dính").'),
+      tab.id);
+  }
+}
+
+/** Đếm lại sau một bước; số tăng thì nói rõ bước nào. Chỉ đọc, không bấm. */
+async function theoDoiAnhThamChieu(tab, sauBuoc) {
+  if (!tab || !tab.ready || !tab.view || tab.dungAnhTC) return null;
+  const d = await thamChieu.dem(tab.view.webContents);
+  if (!d.ok) return d;
+  const truoc = tab.soAnhTC == null ? d.so : tab.soAnhTC;
+  if (d.so > truoc) {
+    logToUi('warning',
+      `🧷 [${tab.id}] Ô nhập vừa có thêm ${d.so - truoc} ảnh tham chiếu (đang có ${d.so}) — ` +
+      `xuất hiện sau bước: ${sauBuoc}.` + (d.ds[0] ? ` Ảnh: …${d.ds[0].khoa.slice(-40)}` : ''), tab.id);
+  }
+  tab.soAnhTC = d.so;
+  return d;
+}
+
+/** Ngay trước khi dán: gỡ nếu mẻ này không dùng ảnh tham chiếu. */
+async function donAnhThamChieuTruocKhiDan(tab) {
+  const d = await theoDoiAnhThamChieu(tab, 'các bước sau prompt trước (đổi tên / tải về)');
+  if (!d || !d.ok || !d.so || !tab.goAnhTC) return;
+  const r = await thamChieu.goHet(tab.view.webContents);
+  if (r.ok) {
+    logToUi('info', `🧹 [${tab.id}] Đã gỡ ${r.daGo} ảnh tham chiếu bị dính trong ô nhập trước khi dán prompt` +
+      (r.nut ? ` (nút "${r.nut}")` : '') + '.', tab.id);
+  } else {
+    logToUi('warning',
+      `⚠️ [${tab.id}] Không gỡ được ảnh tham chiếu trong ô nhập (${r.lyDo}) — prompt này sẽ mang theo ` +
+      `${r.conLai} ảnh. Gửi nhật ký này để sửa tiếp.`, tab.id);
+  }
+  tab.soAnhTC = r.conLai;
+}
+
+// ── THỜI GIAN QUY TRÌNH (2.8.9) — xem src/main/thoi-gian.js ───────────────
+function lichSuTocDo() {
+  try { return store.get('tocDoQuyTrinh').tocDoQuyTrinh || {}; } catch (_) { return {}; }
+}
+/** Lưu tốc độ mẻ vừa chạy để lần sau dự đoán sát hơn ngay từ prompt đầu. */
+function ghiTocDoPha(tab) {
+  const q = tab && tab.quyTrinh;
+  if (!q || q.ketThuc) return;
+  const st = tab.stats || {};
+  const ms = tg.tocDoPha(q, (st.done || 0) + (st.failed || 0), Date.now());
+  if (ms) { try { store.set({ tocDoQuyTrinh: tg.ghiLichSu(lichSuTocDo(), q.pha.cheDo, ms) }); } catch (_) {} }
+}
+function ketThucQuyTrinh(tab) {
+  if (!tab || !tab.quyTrinh || tab.quyTrinh.ketThuc) return;
+  ghiTocDoPha(tab);
+  tab.quyTrinh = tg.ketThuc(tab.quyTrinh, Date.now());
+  logToUi('info', `⏱ [${tab.id}] Quy trình dừng/xong sau ${tg.dinhDang(tab.quyTrinh.ketThuc - tab.quyTrinh.batDau)}.`, tab.id);
+}
+
+/** Chọn model cho mẻ ảnh. Để trống = giữ nguyên model đang chọn trên Flow. */
+async function datModelAnh(tab, settings) {
+  const ten = String((settings && settings.modelAnh) || '').trim();
+  if (!ten) {
+    logToUi('info', `🍌 [${tab.id}] Model ảnh: giữ nguyên model đang chọn trên Flow.`, tab.id);
+    return null;
+  }
+  const r = await datModel(tab, ten, 'model ảnh', true);
+  // modelHienTai là của kế hoạch model VIDEO. Để tên model ảnh nằm đó thì mẻ
+  // video nối sau tưởng nhầm đang ở một model lạ — xoá cho nó tự đọc lại.
+  tab.modelHienTai = null;
+  return r;
+}
+
 /**
  * Chọn model trên trang Flow của một tab. Luôn đọc lại trên trang chứ không
  * tin bộ nhớ: người dùng có thể vừa tự bấm đổi.
@@ -564,7 +656,10 @@ function tabStatsPayload() {
       ? Math.max(0, (soAnToanCua(t.accountId).nghiDen || 0) - Date.now())
       : 0,
     ...(t.stats || { running: 0, done: 0, failed: 0 }),
-    ...(t.tienDo || { tienTrinh: 0, daTai: 0, canTai: 0, loiTai: 0, dangTai: false })
+    ...(t.tienDo || { tienTrinh: 0, daTai: 0, canTai: 0, loiTai: 0, dangTai: false }),
+    // 2.8.9: đồng hồ quy trình + dự đoán lúc xong (cả mẻ video nối sau).
+    thoiGian: tg.uocTinh(t.quyTrinh, t.stats, lichSuTocDo(), Date.now(),
+      t.nghiAnToan ? Math.max(0, (soAnToanCua(t.accountId).nghiDen || 0) - Date.now()) : 0)
   }));
   const tong = perTab.reduce((a, t) => ({
     running: a.running + t.running,
@@ -686,6 +781,7 @@ async function chayTiepChuoi(tab) {
   const names = chain.imageNames || [];
   if (!names.length) {
     logToUi('warning', `⚠️ [${tab.id}] Chuỗi ảnh→video: không có mã ảnh nào để nối tiếp`);
+    ketThucQuyTrinh(tab);
     return;
   }
 
@@ -694,6 +790,7 @@ async function chayTiepChuoi(tab) {
     logToUi('warning',
       `⚠️ [${tab.id}] Mẻ ảnh có ${thatBai} lỗi — DỪNG chuỗi ảnh→video để bạn xem lại. ` +
       `Tắt "chỉ nối khi mẻ ảnh sạch lỗi" nếu muốn chạy tiếp bất chấp.`);
+    ketThucQuyTrinh(tab);
     return;
   }
 
@@ -709,6 +806,8 @@ async function chayTiepChuoi(tab) {
     logToUi('warning', `⚠️ [${tab.id}] Mẻ video nối tiếp TỰ TẮT: ${t}`);
   }
 
+  ghiTocDoPha(tab);                           // tốc độ mẻ ảnh vừa xong → lịch sử
+  tab.quyTrinh = tg.sangPhaVideo(tab.quyTrinh, Date.now(), prompts.length);
   tab.assigned = prompts.length;
   tab.stats = { running: 0, done: 0, failed: 0 };
   tab.tienDo = null;
@@ -726,6 +825,7 @@ async function chayTiepChuoi(tab) {
   if (!doi.ok) {
     tab.chain = null;
     tab.assigned = 0;
+    ketThucQuyTrinh(tab);
     sendUi('stats', { tabId: tab.id, ...tabStatsPayload() });
     logToUi('error',
       `❌ [${tab.id}] Dừng chuỗi ảnh→video: ${doi.lyDo}. ` +
@@ -739,6 +839,7 @@ async function chayTiepChuoi(tab) {
   const caiDatTab = await kiemTruocKhiChay(tab.view.webContents, await chuanBiModel(tab, settings),
     (lvl, msg) => logToUi(lvl, `[${tab.id}] ${msg}`, tab.id));
   ganNhipThaoTac(tab, settings);
+  await ganAnhThamChieu(tab, settings);
   await tabManager.dispatch(tab.id, buildStartMessage(prompts, jobs, caiDatTab));
 }
 
@@ -860,6 +961,8 @@ async function handleEngineMessage(message, senderWc) {
       if (!tab) return { ok: false, error: 'Không xác định được tab gửi yêu cầu' };
       const text = (message.data && message.data.text) || '';
       const ghiNghi = ghiNghiCua(tab);
+      // Ảnh tham chiếu dính từ prompt trước (2.8.9) — gỡ TRƯỚC khi dán.
+      await donAnhThamChieuTruocKhiDan(tab).catch(() => {});
       // Nghỉ giữa thao tác (2.8.8) — engine đang đứng chờ câu trả lời này.
       await nhipTT.nghi(tab, 'truocNhap', ghiNghi);
       const result = await pastePrompt(
@@ -889,6 +992,9 @@ async function handleEngineMessage(message, senderWc) {
     //  có mặt thì hành vi trở về đúng như bản trước, chứ không chết hẳn.
     case 'INJECT_CLICK_CREATE': {
       if (!tab) return { ok: false, error: 'Không xác định được tab' };
+      // Đếm lại sau khi bấm Tạo (không chặn engine): Flow có xoá ảnh tham
+      // chiếu khỏi ô nhập sau khi gửi không — nhật ký sẽ cho biết.
+      setTimeout(() => theoDoiAnhThamChieu(tab, 'bấm Tạo').catch(() => {}), 8000);
       const sel = (selectorNguoiDung() || {}).createBtn || '';
       // ── 1. CHUỘT THẬT trước (2.8.5) ──────────────────────────────────
       //  Nhật ký 11:09 → 11:19 ngày 22/09: cả bốn kiểu bấm bằng JavaScript
@@ -975,6 +1081,7 @@ async function handleEngineMessage(message, senderWc) {
         const found = await tab.view.webContents.executeJavaScript(
           `window.__flowRenameInput(${JSON.stringify(newName)})`, true
         );
+        setTimeout(() => theoDoiAnhThamChieu(tab, `đổi tên "${newName}"`).catch(() => {}), 1500);
         return found;
       } catch (err) {
         return { ok: false, error: err.message };
@@ -986,6 +1093,7 @@ async function handleEngineMessage(message, senderWc) {
       if (!tabId) return { success: false, error: 'Không rõ tab' };
       // Menu tải đã mở, engine chọn chất lượng ngay sau câu trả lời này.
       // Nghỉ TRƯỚC khi xếp tên vào hàng đợi, để tên không nằm chờ vô ích.
+      if (tab) await theoDoiAnhThamChieu(tab, 'mở menu thẻ (chuột phải) để tải về').catch(() => {});
       if (tab) await nhipTT.nghi(tab, 'truocTai', ghiNghiCua(tab));
       const size = downloadManager.pushName(tabId, message.filename);
       return { success: true, queueSize: size };
@@ -1004,12 +1112,15 @@ async function handleEngineMessage(message, senderWc) {
     // ── Trạng thái chạy ────────────────────────────────────────────────
     case 'AUTOMATION_RESUMED':
       if (tab) tab.busy = true;
+      if (tab && tab.quyTrinh) tab.quyTrinh = { ...tab.quyTrinh, ketThuc: null };
       sendUi('tabs', tabManager.list());
       sendUi('run-state', { tabId, running: true });
       return { success: true };
 
     case 'AUTOMATION_STOPPED': {
       if (tab) tab.busy = false;
+      // Hết quy trình khi KHÔNG còn mẻ video chờ nối và không đang nghỉ hạ nhiệt.
+      if (tab && !(tab.chain && tab.chain.phase === 'image') && !tab.nghiAnToan) ketThucQuyTrinh(tab);
       sendUi('tabs', tabManager.list());
       sendUi('run-state', { tabId, running: false });
       // Mẻ ảnh vừa xong mà tab này có đặt chuỗi ảnh→video thì nối tiếp ngay.
@@ -1696,14 +1807,21 @@ function registerIpc() {
 
       // Đặt đúng chế độ Image/Video trên trang Flow trước khi giao việc.
       if (settings.runMode) await datCheDo(tab, settings.runMode);
+      // Model ảnh (2.8.9): mặc định Nano Banana 2 Lite. Chọn SAU khi đã sang
+      // chế độ ảnh — hộp chọn model chỉ liệt kê model của chế độ đang bật.
+      if (settings.runMode === 'image') await datModelAnh(tab, settings);
       // Kế hoạch model (mẻ video) — có thể ép giãn cách tối thiểu 1 giây.
       // Kiểm selector người dùng chỉ + ghi ra mẻ này sẽ tải về thế nào (README 0p).
       const caiDatTab = await kiemTruocKhiChay(tab.view.webContents, await chuanBiModel(tab, settings),
         (lvl, msg) => logToUi(lvl, `[${tabId}] ${msg}`, tabId));
       ganNhipThaoTac(tab, settings);
+      await ganAnhThamChieu(tab, settings);
 
       const r = await tabManager.dispatch(tabId, buildStartMessage(prompts, part, caiDatTab));
       tab.busy = true;            // đánh dấu ngay, không chờ engine báo
+      // Đồng hồ cả quy trình: có chuỗi ảnh→video thì tính luôn mẻ video chờ nối.
+      tab.quyTrinh = tg.batDau(Date.now(), settings.runMode, part.length,
+        tab.chain && tab.chain.phase === 'image' ? (tab.chain.imageNames || []).length : 0);
       results.push({ tabId, count: part.length, ...r });
       logToUi('info',
         `▶ ${tabId}${tab.accountName ? ' (' + tab.accountName + ')' : ''}: ` +
@@ -2026,7 +2144,14 @@ app.whenReady().then(async () => {
   downloadManager = new DownloadManager({
     getSettings: () => store.get('veoSettings').veoSettings || {},
     findTabByWcId: (id) => tabManager.findByWcId(id),
-    notifyTab: (tabId, payload) => tabManager.dispatch(tabId, payload),
+    notifyTab: (tabId, payload) => {
+      // Đếm ảnh tham chiếu sau mỗi lần tải xong (2.8.9) — xem ganAnhThamChieu.
+      if (payload && payload.action === 'DOWNLOAD_DONE') {
+        const t = tabManager.find(tabId);
+        if (t) setTimeout(() => theoDoiAnhThamChieu(t, 'tải về').catch(() => {}), 800);
+      }
+      return tabManager.dispatch(tabId, payload);
+    },
     log: (lvl, msg, tabId) => logToUi(lvl, msg, tabId),
     // Thư mục tải RIÊNG của từng tài khoản, nếu tài khoản đó có đặt. Không có
     // thì video của các tài khoản trộn lẫn và rất khó lần ra cái nào của ai.

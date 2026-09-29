@@ -578,13 +578,17 @@ const FIELDS = [
   'faFrom','faTo','faPad','faPrefix','faSuffix','faPrompt',
   'chainPrompt','chainNameSource',
   // 2.8.8 — nghỉ giữa thao tác. Tiến trình chính đọc (src/main/nhip-thao-tac.js); engine bỏ qua.
-  'nghiThaoTacMin','nghiThaoTacMax'
+  'nghiThaoTacMin','nghiThaoTacMax',
+  // 2.8.9 — model cho mẻ ảnh (tiến trình chính áp, engine bỏ qua).
+  'modelAnh'
 ];
 const SWITCHES = [
   'addIndex','randomScroll','charSync','charSyncStripTag','keyframeSync',
   'voiceSync','autoShutdown','useCustomRange','autoScrollLogs','randomDelay',
   'i2vUsePromptList','i2vStripTag','chainEnabled','chainSkipIfFailed',
-  'nghiThaoTacBat'
+  'nghiThaoTacBat',
+  // 2.8.9 — gỡ ảnh tham chiếu dính trong ô nhập (src/main/anh-tham-chieu.js).
+  'goAnhThamChieu'
 ];
 
 // ── Cài đặt tải về + đổi tên: MỘT BỘ RIÊNG cho Video, MỘT BỘ RIÊNG cho Ảnh ──
@@ -898,6 +902,9 @@ function collectForSave() {
 
 function applySettings(s) {
   if (!s) return;
+  // Model ảnh đã lưu mà hộp chưa có dòng đó (chưa bấm "Đọc danh sách") thì
+  // thêm dòng — gán value cho <select> không có option là lặng lẽ thành rỗng.
+  if (s.modelAnh) themLuaChonModelAnh([s.modelAnh]);
   for (const id of FIELDS) {
     const el = document.getElementById(id);
     if (el && s[id] !== undefined && s[id] !== null) el.value = s[id];
@@ -1037,6 +1044,24 @@ veHopChonModel();
 // ── Đọc danh sách model thẳng từ trang Flow ───────────────────────────────
 //  Vừa để điền gợi ý đúng chữ Flow đang dùng, vừa là phép thử nhanh "app có
 //  bấm được hộp chọn model không" — trước khi giao cả mẻ cho nó.
+// ── Model ảnh (2.8.9) ─────────────────────────────────────────────────────
+const MODEL_ANH_MAC_DINH = 'Nano Banana 2 Lite';
+const laModelAnh = (t) => /nano\s*banana|imagen/i.test(String(t || ''));
+
+/** Thêm các tên chưa có vào hộp Model ảnh, giữ nguyên lựa chọn hiện tại. */
+function themLuaChonModelAnh(ds) {
+  const el = document.getElementById('modelAnh');
+  if (!el) return;
+  const dangChon = el.value;
+  for (const ten of ds || []) {
+    if (!ten || [...el.options].some((o) => o.value === ten)) continue;
+    const o = document.createElement('option');
+    o.value = ten; o.textContent = ten;
+    el.appendChild(o);
+  }
+  el.value = dangChon;
+}
+
 $('#btnDocModel').addEventListener('click', async () => {
   const out = $('#docModelKq');
   const ids = tabsCuaMucCheDo();
@@ -1047,6 +1072,16 @@ $('#btnDocModel').addEventListener('click', async () => {
   if (!r || !r.ok) {
     out.innerHTML = `❌ ${escapeHtml((r && r.lyDo) || 'không rõ lý do')}. ` +
       `Chi tiết đã ghi vào Nhật ký — gửi dòng đó kèm ảnh chụp nếu cần sửa.`;
+    return;
+  }
+  // Tab đang ở chế độ Tạo ảnh → đây là danh sách model ẢNH: điền vào hộp Model
+  // ảnh, KHÔNG đè ba hộp model video (2.8.9).
+  if (r.ds.length && r.ds.every(laModelAnh)) {
+    themLuaChonModelAnh(r.ds);
+    scheduleSave();
+    out.innerHTML = `✅ ${escapeHtml(id)} đang ở chế độ ảnh — model ảnh Flow có: ` +
+      r.ds.map((t) => `<b>${escapeHtml(t)}</b>`).join(' · ') +
+      `<br>Đã điền vào hộp <b>Model ảnh</b> ở trên. Muốn đọc model video thì đổi tab sang Tạo video rồi bấm lại.`;
     return;
   }
   // Dựng lại ba hộp chọn bằng đúng chữ Flow đang ghi. Lựa chọn hiện tại được
@@ -1806,6 +1841,51 @@ function buildChainPayload(prompts) {
 
 // ══════════════════════════════════════════════════════════ TIẾN ĐỘ TỪNG TAB
 
+// ── Đồng hồ quy trình (2.8.9) ─────────────────────────────────────────────
+//  Tiến trình chính gửi mốc bắt đầu và GIỜ dự đoán xong (tính cả mẻ video nối
+//  sau). Giao diện tự nhích mỗi giây từ hai mốc đó — không cần hỏi lại.
+function dinhDangTG(ms) {
+  const t = Math.max(0, Math.round((ms || 0) / 1000));
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  const hai = (n) => String(n).padStart(2, '0');
+  return h ? `${h}:${hai(m)}:${hai(s)}` : `${m}:${hai(s)}`;
+}
+const gioPhut = (ts) => new Date(ts).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
+const NGUON_UOC = {
+  'thuc-te': 'theo tốc độ mẻ này',
+  'thuc-te+mac-dinh': 'theo tốc độ mẻ này; mẻ video nối sau ước ~105 s/video',
+  'lich-su': 'theo tốc độ các lần chạy trước',
+  'mac-dinh': 'ước sơ bộ — sẽ sát hơn sau prompt đầu'
+};
+
+function chuThoiGian(g, now) {
+  if (!g) return '';
+  if (g.ketThuc) return `⏱ Đã chạy ${dinhDangTG(g.ketThuc - g.batDau)} · dừng/xong lúc ${gioPhut(g.ketThuc)}`;
+  const daChay = now - g.batDau;
+  const con = Math.max(0, g.xongLuc - now);
+  return `⏱ Đã chạy ${dinhDangTG(daChay)} · ` +
+    (con > 0 ? `còn ~${dinhDangTG(con)} · xong khoảng ${gioPhut(g.xongLuc)}` : 'sắp xong');
+}
+
+function htmlThoiGian(g) {
+  if (!g) return '';
+  return `<div class="tprow-acc tg" style="margin-top:2px" data-bat-dau="${g.batDau}"` +
+    ` data-xong-luc="${g.xongLuc || ''}" data-ket-thuc="${g.ketThuc || ''}"` +
+    ` title="${escapeHtml(NGUON_UOC[g.nguon] || '')}">${escapeHtml(chuThoiGian(g, Date.now()))}</div>`;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  document.querySelectorAll('#tabProgress .tg').forEach((el) => {
+    const g = {
+      batDau: Number(el.dataset.batDau),
+      xongLuc: Number(el.dataset.xongLuc) || 0,
+      ketThuc: Number(el.dataset.ketThuc) || 0
+    };
+    if (g.batDau) el.textContent = chuThoiGian(g, now);
+  });
+}, 1000);
+
 function renderTabProgress(payload) {
   const box = $('#tabProgress');
   const perTab = (payload && payload.perTab) || [];
@@ -1862,6 +1942,7 @@ function renderTabProgress(payload) {
            ${xong}/${tong || '—'} · ${pct}%${dangTao ? ' · ' + dangTao : ''}
          </div>
          <div class="tprow-acc tai ${lopTai}" style="margin-top:2px">${nhanTai}</div>
+         ${htmlThoiGian(t.thoiGian)}
        </div>
        <div class="tprow-nums">
          <span class="ok"><b>${xong}</b><span class="lbl">xong</span></span>

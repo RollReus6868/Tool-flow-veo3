@@ -1,4 +1,4 @@
-# Flow Automation Studio 2.8.8
+# Flow Automation Studio 2.8.9
 
 Tool desktop tự động hoá Google Flow. Bản chuyển từ tiện ích Chrome
 **Flow Automation Local 1.10.0** sang ứng dụng chạy thẳng trên máy.
@@ -195,6 +195,74 @@ vừa soạn prompt vừa chỉnh cài đặt.
 
 
 ---
+
+## 0s. Bản 2.8.9 — ảnh cũ dính vào prompt sau, đồng hồ quy trình, model ảnh mặc định
+
+### Ảnh của prompt trước dính vào prompt sau
+
+**Triệu chứng (ảnh chụp 29/09, mẻ ảnh Nano Banana 2 Lite).** Prompt [1] tạo sạch;
+prompt [2] và [3] mỗi cái mang theo một ảnh tham chiếu, là ảnh của prompt ngay trước.
+
+**Không phải tính năng đồng nhất nhân vật.** Nhật ký mẻ đó (18:41 → 18:51) không có
+dòng "🧑 Tìm nhân vật" nào, tức Character Sync không chạy, và app không có chỗ nào khác
+cố ý gắn ảnh vào ô nhập. Đây là lỗi: ảnh dính vào ô nhập ở đâu đó giữa lúc prompt
+trước xong (đổi tên qua menu chuột phải, lọc tìm kiếm, mở menu tải) và lúc dán
+prompt sau, rồi Flow gửi nó theo lượt Tạo kế tiếp.
+
+**Chưa biết chắc bước nào làm dính** — cần Flow thật để thử. Bản này làm hai việc:
+
+- **Lần ra bước gây dính.** Tiến trình chính đếm ảnh trong ô nhập sau từng bước (đổi
+  tên, mở menu tải, tải xong, bấm Tạo, trước khi dán). Số tăng ở bước nào thì Nhật ký
+  ghi `🧷 [tab] Ô nhập vừa có thêm 1 ảnh tham chiếu … — xuất hiện sau bước: …`.
+- **Gỡ trước khi dán.** Mẻ không bật Character Sync / Đồng bộ khung hình thì mọi ảnh
+  trong ô nhập đều là ảnh dính: app bấm nút ✕ của từng ảnh (JavaScript trước; không
+  ăn thì chuột thật), đếm lại sau mỗi cú, bấm không ăn thì dừng và báo, không bấm bừa.
+  Nhật ký: `🧹 [tab] Đã gỡ 1 ảnh tham chiếu …` hoặc `⚠️ … Không gỡ được …`.
+- Mẻ **có** Character Sync / khung hình: engine cố ý gắn ảnh ngay trước khi dán, không
+  phân biệt được, nên **không gỡ và không theo dõi**.
+- Công tắc **Gỡ ảnh tham chiếu bị dính** (thẻ Character Sync, bật sẵn): tắt nếu bạn tự
+  gắn một ảnh cho cả mẻ.
+
+Phần đếm/gỡ nằm ở `src/inject/flow-anh-tham-chieu.js` (tiêm riêng, không sửa engine)
+và `src/main/anh-tham-chieu.js`. "Ô nhập" = khối bao quanh ô soạn và nút Tạo, không
+gồm lưới kết quả; ảnh nhỏ < 20 px và biểu tượng trong nút cài đặt không tính.
+
+**Đo được khi kiểm thử (ghi lại để khỏi đoán lần sau).** Tab chạy ngầm trong app không
+nhận chuột thật: mỗi cú `Input.dispatchMouseEvent` chờ 5 giây rồi rơi mất
+(`isPainting() = false`). Vì vậy gỡ ảnh đi bằng JavaScript trước.
+
+### Đồng hồ quy trình trên từng tab
+
+Thẻ tiến độ từng tab có thêm dòng `⏱ Đã chạy 12:37 · còn ~25:27 · xong khoảng 19:59`,
+tự nhích mỗi giây. "Quy trình" tính từ lúc bấm Bắt đầu tới khi tab xong hẳn, **gồm cả
+mẻ video tự nối sau mẻ ảnh** (đồng hồ không đặt lại khi sang mẻ video). Xong/dừng thì
+đồng hồ đứng: `⏱ Đã chạy 26:40 · dừng/xong lúc 19:27`. Nhật ký ghi một dòng
+`⏱ [tab] Quy trình dừng/xong sau …`.
+
+Dự đoán = phần còn lại của mẻ đang chạy (theo tốc độ đo thật khi đã xong ≥ 1 prompt)
++ mẻ video chờ nối + thời gian nghỉ hạ nhiệt còn lại. Chưa có số đo thì dùng tốc độ các
+lần chạy trước (lưu trong `tocDoQuyTrinh`), chưa có nữa thì dùng số đo từ nhật ký 29/09:
+ảnh ~60 s, video ~105 s mỗi prompt. Rê chuột vào dòng đồng hồ để xem nó đang ước theo
+nguồn nào. Code: `src/main/thoi-gian.js` (hàm thuần).
+
+### Model ảnh mặc định: Nano Banana 2 Lite
+
+Thẻ mới **🍌 Model ảnh**. Trước mỗi mẻ ảnh (kể cả mẻ ảnh đầu của chuỗi ảnh → video),
+sau khi đã chuyển Flow sang chế độ ảnh, app chọn model này. Mặc định **Nano Banana 2
+Lite**; để trống = giữ nguyên model đang chọn trên Flow. Muốn có đủ tên model ảnh: để tab
+ở chế độ Tạo ảnh rồi bấm "Đọc danh sách model" (ở thẻ Model video), danh sách ảnh tự điền
+vào hộp Model ảnh, không đè ba hộp model video.
+
+**Kiểm thử.** `tests/run.js` 144/144 (thêm bài cho đồng hồ, luật gỡ ảnh, model ảnh; cả
+bản CRLF). `tests/tham-chieu-main.js` (mới): đếm đúng (bỏ lưới, biểu tượng model, biểu
+tượng nhỏ), gỡ 1/2 ảnh, nút ✕ chỉ hiện khi rê chuột, nút chỉ nhận chuột thật, nút "chết"
+(dừng sau đúng 1 cú), khối ôm cả lưới thì không đoán. `tests/model-e2e.js` mục 11: tab
+thật của app, gọi đúng `INJECT_PASTE` — gỡ rồi mới dán; mẻ Character Sync giữ nguyên.
+`tests/smoke.js`: đồng hồ hiện đúng và tự nhích, tab xong đứng yên; hộp Model ảnh.
+
+**Chưa nghiệm thu được.** Trên Flow thật: bước nào làm ảnh dính (chờ dòng `🧷` trong
+nhật ký), nút ✕ thật của Flow có nhận cú bấm JavaScript không, và việc chọn Nano Banana
+2 Lite trong hộp chọn model ở chế độ ảnh.
 
 ## 0r. Bản 2.8.8 — nghỉ ngẫu nhiên giữa các thao tác trong mỗi prompt
 
