@@ -178,6 +178,76 @@ exports.run = async function (x) {
          dong.filter((d) => /🎚/.test(d)).slice(-3).join(' | '));
       await tabManager.dispatch(tab.id, { action: 'STOP_AUTOMATION' });
       await wait(1000);
+
+      // ── 10. (2.8.8) Nghỉ giữa thao tác — engine THẬT, trang giả lập ──────
+      //  Đo bằng đồng hồ: lúc chữ thật sự vào ô nhập (đo TRONG trang) so với
+      //  dòng nhật ký báo nghỉ và dòng engine ghi SAU khi dán xong. Không nghỉ
+      //  thì khoảng "dán → engine đi tiếp" chỉ ~1,4 giây (engine tự chờ 600 +
+      //  500 + 300 ms); nghỉ 3 giây thì phải ≥ 3 giây.
+      const nhipTT = require('../src/main/nhip-thao-tac');
+      const chayMe = async (min, max, cau) => {
+        dong.length = 0;
+        await js(`(() => {
+          const ed = document.querySelector('.ProseMirror'); ed.innerHTML = '';
+          window.__tDan = 0;
+          if (window.__moDan) window.__moDan.disconnect();
+          window.__moDan = new MutationObserver(() => {
+            if (!window.__tDan && ed.innerText.trim().length) window.__tDan = Date.now();
+          });
+          window.__moDan.observe(ed, { childList: true, subtree: true, characterData: true });
+          return true; })()`);
+        // Tắt các bước phụ (khung hình, nhân vật, giọng) — mặc định engine BẬT
+        // khung hình, gặp prompt không có @bắt_đầu là dừng trước khi dán.
+        const st = await chuanBiModel(tab, {
+          runMode: 'video', multiTab: true, multiTabStagger: 0, chonModel: {},
+          keyframeSync: false, charSync: false, voiceSync: false
+        });
+        // Gắn đúng như hai chỗ giao việc trong main.js làm (ganNhipThaoTac).
+        nhipTT.ganChoTab(tab, { nghiThaoTacBat: true, nghiThaoTacMin: min, nghiThaoTacMax: max });
+        const tDong = {};
+        const logGoc2 = console.log;
+        console.log = (...a) => {
+          const d = a.join(' ');
+          if (/Nghỉ .*trước khi nhập prompt/.test(d) && !tDong.nhap) tDong.nhap = Date.now();
+          if (/Nghỉ .*trước khi bấm Tạo/.test(d) && !tDong.tao) tDong.tao = Date.now();
+          if (/Paste verified|Zero-width still present/.test(d) && !tDong.diTiep) tDong.diTiep = Date.now();
+          logGoc(...a);
+          dong.push(d);
+        };
+        await tabManager.dispatch(tab.id, {
+          action: 'START_AUTOMATION',
+          data: { prompts: [cau], videosToCreate: [{ index: 1, text: cau }], settings: st }
+        });
+        return { tDong, dung: () => { console.log = logGoc2; } };
+      };
+
+      const me = await chayMe(3, 3, 'một chú chó chạy trên bãi cỏ');
+      await doi(() => me.tDong.diTiep, 45000);
+      const tDan = await js('window.__tDan');
+      me.dung();
+      ok('nhật ký báo "Nghỉ … trước khi nhập prompt"', !!me.tDong.nhap);
+      ok('chữ vào ô nhập SAU khoảng nghỉ trước khi nhập (≥ 2,9 s)',
+         tDan && me.tDong.nhap && tDan - me.tDong.nhap >= 2900, `cách ${tDan - me.tDong.nhap} ms`);
+      ok('nhật ký báo "Nghỉ … trước khi bấm Tạo"', !!me.tDong.tao);
+      ok('dán xong → engine đi tiếp (tới bước bấm Tạo) sau ≥ 3 s, không phải ~1,4 s',
+         tDan && me.tDong.diTiep && me.tDong.diTiep - tDan >= 3000, `cách ${me.tDong.diTiep - tDan} ms`);
+      await tabManager.dispatch(tab.id, { action: 'STOP_AUTOMATION' });
+      await wait(1500);
+
+      // Bấm Dừng giữa lúc đang nghỉ dài: phải thôi nghỉ ngay, không chờ hết 30 s.
+      const me2 = await chayMe(30, 30, 'một đàn chim bay qua núi');
+      await doi(() => me2.tDong.nhap, 45000);
+      const tHuy = Date.now();
+      nhipTT.huy(tab);             // đúng lời gọi của nút Tạm dừng / Dừng trong main.js
+      await doi(async () => await js('window.__tDan'), 10000);
+      const tDan2 = await js('window.__tDan');
+      me2.dung();
+      ok('bấm Dừng lúc đang nghỉ 30 s: thôi nghỉ trong vòng 2 s',
+         tDan2 && tDan2 - tHuy < 2000, tDan2 ? `sau ${tDan2 - tHuy} ms` : 'chữ không vào');
+      await tabManager.dispatch(tab.id, { action: 'STOP_AUTOMATION' });
+      nhipTT.huy(tab);
+      nhipTT.ganChoTab(tab, {});
+      await wait(1000);
     } finally {
       console.log = logGoc;
     }

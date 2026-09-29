@@ -1,4 +1,4 @@
-# Flow Automation Studio 2.8.7
+# Flow Automation Studio 2.8.8
 
 Tool desktop tự động hoá Google Flow. Bản chuyển từ tiện ích Chrome
 **Flow Automation Local 1.10.0** sang ứng dụng chạy thẳng trên máy.
@@ -195,6 +195,51 @@ vừa soạn prompt vừa chỉnh cài đặt.
 
 
 ---
+
+## 0r. Bản 2.8.8 — nghỉ ngẫu nhiên giữa các thao tác trong mỗi prompt
+
+**Người dùng hỏi (29/09).** Flow hay báo "hoạt động bất thường", có khi ngay
+lần tạo video đầu. Muốn giữa mọi thao tác của tool có một khoảng nghỉ ngẫu nhiên
+do mình chọn.
+
+**Trước bản này.** Chỉ có nhịp *giữa hai lần tạo* (Chờ tối thiểu / tối đa). Bên
+trong một prompt các bước nối nhau sát: dán xong chưa tới 1 giây đã bấm Tạo, menu
+tải mở ra là chọn chất lượng ngay.
+
+**Thêm.** Cài đặt → Nhịp chạy & thử lại → **Nghỉ giữa các thao tác** (mặc định
+tắt), với "Nghỉ tối thiểu / tối đa" (giây, lẻ được tới 0,5, trần 60). Bật lên
+thì trước mỗi bước app nghỉ một khoảng ngẫu nhiên trong đoạn đó:
+
+| Bước | Nghỉ ở đâu (tiến trình chính, engine đang đứng chờ) |
+|---|---|
+| trước khi nhập prompt | `INJECT_PASTE`, trước khi dán |
+| nhập xong, trước khi bấm Tạo | `INJECT_PASTE`, sau khi dán, trước khi trả lời engine |
+| trước khi đổi model | `ACQUIRE_CREATE_SLOT`, chỉ khi thật sự cần đổi |
+| trước khi chọn chất lượng tải về | `SET_NEXT_FILENAME` (menu tải đã mở) |
+| trước khi gõ tên mới | `INJECT_RENAME_INPUT` (hộp đổi tên đã mở) |
+
+- **Không sửa engine.** Cả năm chỗ là lúc engine đứng chờ tiến trình chính trả
+  lời, nên nghỉ ở đó là engine tự chờ theo.
+- **Cố ý KHÔNG nghỉ bên trong `INJECT_CLICK_CREATE`.** Engine chụp danh sách thẻ
+  ngay trước khi gửi lệnh đó; nghỉ ở đây thì ảnh chụp cũ đi, dễ nhận nhầm thẻ
+  của prompt trước. Khoảng "trước khi bấm Tạo" nằm ở cuối bước dán, trước ảnh chụp.
+- Bấm **Tạm dừng / Dừng** là cắt ngang lần nghỉ đang dở (kiểm mỗi 0,25 giây).
+- Nhật ký ghi một dòng đầu mẻ `💤 [tab] Nhịp thao tác: …`, rồi 10 lần nghỉ đầu
+  `💤 [tab] Nghỉ 2,4s — nhập xong, trước khi bấm Tạo`; sau đó thôi ghi từng lần.
+- Mẻ video tự nối sau mẻ ảnh cũng áp (gắn ở cả hai chỗ giao việc).
+
+**Nói thẳng về hiệu quả.** Việc này làm tool thao tác thưa và chậm hơn, không làm
+tool "vô hình" với Google. Thứ quyết định nhất vẫn là số prompt mỗi ngày và số tab
+chạy cùng lúc trên một tài khoản, và bị nhắc thì dừng hẳn tài khoản đó vài giờ.
+
+**Kiểm thử.** `tests/run.js`: chuẩn hoá cài đặt, khoảng bốc ngẫu nhiên, giới hạn
+dòng nhật ký, cắt ngang khi Dừng, và năm chỗ nối trong `main.js` (kể cả chỗ cấm
+nghỉ). `tests/model-e2e.js` mục 10: engine thật trên trang giả, đo bằng đồng hồ:
+chữ vào ô sau ≥ 3 giây nghỉ; từ lúc dán tới lúc engine đi tiếp ≥ 3 giây (không
+nghỉ thì ~1,7 giây); đang nghỉ 30 giây mà bấm Dừng thì thôi sau ~0,3 giây.
+
+**Chưa nghiệm thu được.** Chạy trên Flow thật. Hai bước tải về và đổi tên mới kiểm
+tĩnh (trang giả không có menu tải / hộp đổi tên để engine đi tới).
 
 ## 0q. Bản 2.8.7 — Flow bỏ "Lite [Lower Priority]", mục Model video không chọn được
 

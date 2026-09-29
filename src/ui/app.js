@@ -576,12 +576,15 @@ const FIELDS = [
   'promptSeparator','startIndex','endIndex','customIndices','planMode',
   'i2vPrompt','i2vFrom','i2vTo','i2vPad','i2vNamePrefix','i2vNameSuffix',
   'faFrom','faTo','faPad','faPrefix','faSuffix','faPrompt',
-  'chainPrompt','chainNameSource'
+  'chainPrompt','chainNameSource',
+  // 2.8.8 — nghỉ giữa thao tác. Tiến trình chính đọc (src/main/nhip-thao-tac.js); engine bỏ qua.
+  'nghiThaoTacMin','nghiThaoTacMax'
 ];
 const SWITCHES = [
   'addIndex','randomScroll','charSync','charSyncStripTag','keyframeSync',
   'voiceSync','autoShutdown','useCustomRange','autoScrollLogs','randomDelay',
-  'i2vUsePromptList','i2vStripTag','chainEnabled','chainSkipIfFailed'
+  'i2vUsePromptList','i2vStripTag','chainEnabled','chainSkipIfFailed',
+  'nghiThaoTacBat'
 ];
 
 // ── Cài đặt tải về + đổi tên: MỘT BỘ RIÊNG cho Video, MỘT BỘ RIÊNG cho Ảnh ──
@@ -965,6 +968,26 @@ function syncConditionalFields() {
   $('#delayHint').textContent = nn
     ? 'Mỗi lần tạo xong, app chờ một khoảng NGẪU NHIÊN trong đoạn trên rồi mới tạo tiếp — nhịp bấm không đều đặn như máy, đỡ bị Flow để ý.'
     : 'Đang chờ CỐ ĐỊNH đúng số giây tối thiểu sau mỗi lần tạo.';
+
+  // Nghỉ giữa thao tác (2.8.8)
+  const nt = $('#nghiThaoTacBat').checked;
+  $('#nghiThaoTacMin').disabled = !nt;
+  $('#nghiThaoTacMax').disabled = !nt;
+  $('#nghiThaoTacO').style.opacity = nt ? '' : '.4';
+  if (nt) {
+    let a = parseFloat(String($('#nghiThaoTacMin').value).replace(',', '.')) || 0;
+    let b = parseFloat(String($('#nghiThaoTacMax').value).replace(',', '.')) || 0;
+    a = Math.min(60, Math.max(0, a)); b = Math.min(60, Math.max(0, b));
+    if (b < a) [a, b] = [b, a];
+    const moiPrompt = [a * 5, b * 5].map((x) => Math.round(x));
+    $('#nghiThaoTacHint').innerHTML =
+      `Trước mỗi bước — <b>nhập prompt</b>, <b>bấm Tạo</b>, <b>đổi model</b>, <b>tải về</b>, <b>đổi tên</b> — ` +
+      `app nghỉ một khoảng ngẫu nhiên ${a}–${b} giây. Mỗi prompt chậm thêm khoảng ${moiPrompt[0]}–${moiPrompt[1]} giây ` +
+      `(ít hơn nếu mẻ không đổi model / không tải / không đổi tên). Bấm Tạm dừng hay Dừng là cắt ngang lần nghỉ ngay.`;
+  } else {
+    $('#nghiThaoTacHint').textContent =
+      'Đang tắt: các bước trong một prompt nối nhau sát như cũ. Bật lên để tool thao tác thưa hơn.';
+  }
 
   updatePlanHint();
 }

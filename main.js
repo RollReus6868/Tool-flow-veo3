@@ -22,6 +22,7 @@ const { buildJobs, splitJobs, buildStartMessage, planRun, planRunJobs, buildImag
         tenAnhTheoRename, caiDatChuoiVideo } = require('./src/main/jobs');
 const anToan = require('./src/main/an-toan');
 const modelKH = require('./src/main/model');
+const nhipTT = require('./src/main/nhip-thao-tac');
 const { BoCapNhat, layRepo } = require('./src/main/cap-nhat');
 
 const APP_VERSION = require('./package.json').version;
@@ -322,6 +323,19 @@ function lpDangChan(accountId) {
 }
 
 const cho = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Nghỉ giữa thao tác (2.8.8): gắn cấu hình cho tab lúc giao mẻ, và ghi MỘT
+ * dòng vào nhật ký để người dùng biết mẻ này có nghỉ hay không.
+ */
+/** Ghi dòng "💤 [tab] Nghỉ …" cùng kiểu với các dòng 🎚 [tab] Model … */
+const ghiNghiCua = (tab) => (msg) => logToUi('info', String(msg).replace('💤', `💤 [${tab.id}]`), tab.id);
+
+function ganNhipThaoTac(tab, settings) {
+  const k = nhipTT.ganChoTab(tab, settings);
+  if (k.bat) logToUi('info', `💤 [${tab.id}] Nhịp thao tác: ${nhipTT.moTa(k)}.`, tab.id);
+  return k;
+}
 
 /**
  * Chọn model trên trang Flow của một tab. Luôn đọc lại trên trang chứ không
@@ -724,6 +738,7 @@ async function chayTiepChuoi(tab) {
   // Kiểm selector người dùng chỉ + ghi ra mẻ video sẽ tải về thế nào (README 0p).
   const caiDatTab = await kiemTruocKhiChay(tab.view.webContents, await chuanBiModel(tab, settings),
     (lvl, msg) => logToUi(lvl, `[${tab.id}] ${msg}`, tab.id));
+  ganNhipThaoTac(tab, settings);
   await tabManager.dispatch(tab.id, buildStartMessage(prompts, jobs, caiDatTab));
 }
 
@@ -844,11 +859,18 @@ async function handleEngineMessage(message, senderWc) {
     case 'INJECT_PASTE': {
       if (!tab) return { ok: false, error: 'Không xác định được tab gửi yêu cầu' };
       const text = (message.data && message.data.text) || '';
+      const ghiNghi = ghiNghiCua(tab);
+      // Nghỉ giữa thao tác (2.8.8) — engine đang đứng chờ câu trả lời này.
+      await nhipTT.nghi(tab, 'truocNhap', ghiNghi);
       const result = await pastePrompt(
         tab.view.webContents,
         text,
         (lvl, msg) => logToUi(lvl, msg, tabId)
       );
+      // Nghỉ SAU khi dán, TRƯỚC khi trả lời: engine chụp danh sách thẻ rồi bấm
+      // Tạo ngay khi nhận trả lời — nghỉ ở đây thì ảnh chụp vẫn sát cú bấm.
+      // (Nghỉ bên trong INJECT_CLICK_CREATE thì ảnh chụp đã cũ, dễ nhận nhầm thẻ.)
+      if (result && result.ok) await nhipTT.nghi(tab, 'truocTao', ghiNghi);
       // Engine đọc trường hasZeroWidth để biết Slate đã nhận chưa.
       return { ok: result.ok, hasZeroWidth: !result.ok, error: result.error, ...result };
     }
@@ -946,6 +968,7 @@ async function handleEngineMessage(message, senderWc) {
     case 'INJECT_RENAME_INPUT': {
       if (!tab) return { ok: false, error: 'Không xác định được tab' };
       const newName = (message.data && message.data.newName) || '';
+      await nhipTT.nghi(tab, 'truocDoiTen', ghiNghiCua(tab));
       try {
         // Dùng lại hàm dò ô nhập nguyên văn của tiện ích, nhưng bơm chữ bằng
         // đường CDP để tên dài cũng vào đủ.
@@ -961,6 +984,9 @@ async function handleEngineMessage(message, senderWc) {
     // ── Hàng đợi tên file — theo TỪNG TAB, không còn đổi chéo ───────────
     case 'SET_NEXT_FILENAME': {
       if (!tabId) return { success: false, error: 'Không rõ tab' };
+      // Menu tải đã mở, engine chọn chất lượng ngay sau câu trả lời này.
+      // Nghỉ TRƯỚC khi xếp tên vào hàng đợi, để tên không nằm chờ vô ích.
+      if (tab) await nhipTT.nghi(tab, 'truocTai', ghiNghiCua(tab));
       const size = downloadManager.pushName(tabId, message.filename);
       return { success: true, queueSize: size };
     }
@@ -1056,6 +1082,7 @@ async function handleEngineMessage(message, senderWc) {
         const canDoi = model && (!tab.modelHienTai ||
           !modelKH.cungModel(tab.modelHienTai, model) || tab.demPromptMoi % 10 === 0);
         if (canDoi) {
+          await nhipTT.nghi(tab, 'truocModel', ghiNghiCua(tab));
           // Prompt đầu mẻ: xác nhận model thành lời kể cả khi không cần đổi.
           const r = await datModel(tab, model, lyDo, tab.demPromptMoi === 1);
           tab.loiModel = r && r.ok ? 0 : (tab.loiModel || 0) + 1;
@@ -1673,6 +1700,7 @@ function registerIpc() {
       // Kiểm selector người dùng chỉ + ghi ra mẻ này sẽ tải về thế nào (README 0p).
       const caiDatTab = await kiemTruocKhiChay(tab.view.webContents, await chuanBiModel(tab, settings),
         (lvl, msg) => logToUi(lvl, `[${tabId}] ${msg}`, tabId));
+      ganNhipThaoTac(tab, settings);
 
       const r = await tabManager.dispatch(tabId, buildStartMessage(prompts, part, caiDatTab));
       tab.busy = true;            // đánh dấu ngay, không chờ engine báo
@@ -1705,7 +1733,7 @@ function registerIpc() {
     const ds = (tabIds && tabIds.length)
       ? tabIds.map((id) => tabManager.find(id)).filter(Boolean)
       : tabManager.tabs;
-    for (const t of ds) huyNghi(t.accountId);
+    for (const t of ds) { huyNghi(t.accountId); nhipTT.huy(t); }
     return guiTheoTab(tabIds, { action: 'PAUSE_AUTOMATION' });
   });
 
@@ -1721,6 +1749,7 @@ function registerIpc() {
       downloadManager.clear(t.id);     // chỉ xoá hàng đợi tên của ĐÚNG tab đó
       t.chain = null;                  // dừng tay thì không nối chuỗi nữa
       huyNghi(t.accountId);            // đang hẹn chạy lại thì bỏ hẹn, đừng tự bật dậy
+      nhipTT.huy(t);                   // đang nghỉ giữa thao tác thì cắt ngang
     }
     return guiTheoTab(tabIds, { action: 'STOP_AUTOMATION' });
   });

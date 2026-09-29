@@ -1,10 +1,10 @@
-## Flow Automation Studio 2.8.7
+## Flow Automation Studio 2.8.8
 
-**Sửa mục Model video sau khi Google Flow bỏ "Veo 3.1 - Lite [Lower Priority]".**
+**Thêm: nghỉ ngẫu nhiên giữa các thao tác trong mỗi prompt.**
 
-- **Không chọn được model chính / phụ / dự phòng:** ba ô giờ là hộp chọn thật, bấm là ra đủ danh sách. Tên cũ Flow không còn thì hiện viền vàng kèm "⚠ Flow không còn model này" để bạn chọn lại.
-- **Mục "Dự phòng khi Lower Priority bị chặn"** tự ẩn khi Flow không còn Lower Priority, và tự hiện lại nếu Flow đưa nó trở lại.
-- **Kế hoạch model cũ:** đầu mẻ app kiểm danh sách model thật trên tab, bỏ tên không còn và ghi một dòng cảnh báo vào Nhật ký.
-- **Nhật ký rõ hơn:** prompt đầu mỗi tab luôn ghi model đang dùng. Thẻ Flow báo lỗi thì ghi luôn chữ Flow viết trên thẻ.
+- Vào Cài đặt → Nhịp chạy & thử lại → bật **Nghỉ giữa các thao tác**, rồi chọn số giây tối thiểu và tối đa.
+- Trước mỗi bước (nhập prompt, bấm Tạo, đổi model, tải về, đổi tên) app nghỉ một khoảng ngẫu nhiên trong đoạn đó.
+- Bấm Tạm dừng hoặc Dừng là thôi nghỉ ngay.
+- Nhật ký ghi rõ mẻ nào đang nghỉ và nghỉ bao lâu.
 
-Tài khoản, phiên đăng nhập, cài đặt và dự án giữ nguyên.
+Mặc định tắt. Tài khoản, phiên đăng nhập, cài đặt và dự án giữ nguyên.

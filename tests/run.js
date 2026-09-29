@@ -43,6 +43,15 @@ function test(name, fn) {
   }
 }
 
+// Bài kiểm bất đồng bộ (2.8.8): phần kết luận ở cuối file chờ hết mới đếm.
+const choAsync = [];
+function testAsync(name, fn) {
+  choAsync.push(Promise.resolve().then(fn).then(
+    () => { pass++; },
+    (err) => { failures.push(`${name}\n     ${err.message}`); }
+  ));
+}
+
 // ── Bỏ dấu tiếng Việt ──────────────────────────────────────────────────────
 test('Bỏ dấu giữ nguyên nghĩa', () => {
   assert.strictEqual(deaccentVi('Đường phố Hà Nội'), 'Duong pho Ha Noi');
@@ -1144,7 +1153,8 @@ test('model: nối dây trong main.js đủ các chỗ', () => {
   // 3. Cả hai đường giao việc (bấm Bắt đầu, và mẻ video nối sau ảnh).
   assert.ok(/chuanBiModel\(tab, settings\)[\s\S]{0,200}buildStartMessage\(prompts, part, caiDatTab\)/.test(m),
     'nút Bắt đầu chưa áp kế hoạch model');
-  assert.ok(/chuanBiModel\(tab, settings\)[\s\S]{0,120}buildStartMessage\(prompts, jobs, caiDatTab\)/.test(m),
+  // 2.8.8: thêm dòng ganNhipThaoTac ở giữa nên nới cửa sổ 120 → 200 ký tự.
+  assert.ok(/chuanBiModel\(tab, settings\)[\s\S]{0,200}buildStartMessage\(prompts, jobs, caiDatTab\)/.test(m),
     'mẻ video nối tiếp chưa áp kế hoạch model');
   // 4. Chuyển dự phòng TRƯỚC khi cho nghỉ.
   assert.ok(/thuChuyenDuPhong\(tab\.accountId, qd\)\) return;\s*\n\s*await batDauNghi/.test(m),
@@ -1656,7 +1666,120 @@ test('thẻ lỗi: đọc chữ Flow ghi trên thẻ và ghi vào nhật ký', (
   assert.ok(/_lyDoDaGhi/.test(g), 'phải lọc trùng — lưới còn thẻ lỗi cũ thì câu đó lặp mãi');
 });
 
+// ── 2.8.8: nghỉ giữa các thao tác trong một prompt ─────────────────────────
+const NT = require('../src/main/nhip-thao-tac');
+
+test('nhịp thao tác: chuẩn hoá cài đặt', () => {
+  assert.deepStrictEqual(NT.chuanHoa({}), { bat: false, min: 1, max: 4 });
+  assert.deepStrictEqual(NT.chuanHoa({ nghiThaoTacBat: true, nghiThaoTacMin: '2', nghiThaoTacMax: '5' }),
+    { bat: true, min: 2, max: 5 });
+  // Gõ ngược thì đổi chỗ, không bỏ.
+  assert.deepStrictEqual(NT.chuanHoa({ nghiThaoTacBat: true, nghiThaoTacMin: 6, nghiThaoTacMax: 2 }),
+    { bat: true, min: 2, max: 6 });
+  // Dấu phẩy kiểu Việt, và trần 60 giây.
+  assert.strictEqual(NT.chuanHoa({ nghiThaoTacBat: true, nghiThaoTacMin: '1,5', nghiThaoTacMax: 999 }).min, 1.5);
+  assert.strictEqual(NT.chuanHoa({ nghiThaoTacBat: true, nghiThaoTacMin: 1, nghiThaoTacMax: 999 }).max, 60);
+  // Bật mà cả hai đầu là 0 thì coi như tắt.
+  assert.strictEqual(NT.chuanHoa({ nghiThaoTacBat: true, nghiThaoTacMin: 0, nghiThaoTacMax: 0 }).bat, false);
+  assert.strictEqual(NT.chuanHoa({ nghiThaoTacBat: true, nghiThaoTacMin: -3, nghiThaoTacMax: 'abc' }).min, 0);
+});
+
+test('nhịp thao tác: bốc thời gian nằm trong khoảng người dùng chọn', () => {
+  const k = { bat: true, min: 2, max: 5 };
+  assert.strictEqual(NT.bocMs(k, () => 0), 2000);
+  assert.strictEqual(NT.bocMs(k, () => 0.999999), 5000);
+  assert.strictEqual(NT.bocMs({ bat: false, min: 2, max: 5 }, () => 0.5), 0, 'tắt thì không nghỉ');
+  for (let i = 0; i < 500; i++) {
+    const ms = NT.bocMs(k);
+    assert.ok(ms >= 2000 && ms <= 5000, `ra ngoài khoảng: ${ms}`);
+  }
+  // Ngẫu nhiên THẬT: 500 lần không được ra cùng một số.
+  const ds = new Set(Array.from({ length: 500 }, () => NT.bocMs(k)));
+  assert.ok(ds.size > 50, 'khoảng nghỉ không ngẫu nhiên');
+});
+
+testAsync('nhịp thao tác: nghỉ đủ, ghi nhật ký có giới hạn, bấm Dừng là cắt ngang', async () => {
+  const log = [];
+  let daNgu = 0;
+  const ngu = async (ms) => { daNgu += ms; };
+  const tab = { id: 'tab1' };
+  NT.ganChoTab(tab, { nghiThaoTacBat: true, nghiThaoTacMin: 3, nghiThaoTacMax: 3 });
+  const ms = await NT.nghi(tab, 'truocTao', (m) => log.push(m), { ngu });
+  assert.strictEqual(ms, 3000);
+  assert.strictEqual(daNgu, 3000);
+  assert.ok(/Nghỉ 3,0s — nhập xong, trước khi bấm Tạo/.test(log[0]), log[0]);
+
+  // Không tràn nhật ký: 30 lần nghỉ chỉ ra 10 dòng + 1 dòng báo.
+  for (let i = 0; i < 29; i++) await NT.nghi(tab, 'truocNhap', (m) => log.push(m), { ngu });
+  assert.strictEqual(log.length, 11, `ghi ${log.length} dòng`);
+
+  // Tắt thì không nghỉ và không ghi gì.
+  const t2 = { id: 't2' };
+  NT.ganChoTab(t2, { nghiThaoTacBat: false, nghiThaoTacMin: 3, nghiThaoTacMax: 3 });
+  assert.strictEqual(await NT.nghi(t2, 'truocTai', () => { throw new Error('không được ghi'); }, { ngu }), 0);
+
+  // Dừng giữa chừng: nghỉ 60 giây, bấm Dừng sau 1 giây → thôi ngay.
+  const t3 = { id: 't3' };
+  NT.ganChoTab(t3, { nghiThaoTacBat: true, nghiThaoTacMin: 60, nghiThaoTacMax: 60 });
+  let dem = 0;
+  const nguRoiDung = async (x) => { dem += x; if (dem >= 1000) NT.huy(t3); };
+  const da = await NT.nghi(t3, 'truocTao', null, { ngu: nguRoiDung });
+  assert.ok(da <= 1250, `bấm Dừng rồi vẫn nghỉ ${da}ms`);
+});
+
+test('nhịp thao tác: nối đúng chỗ trong main.js', () => {
+  const boGhiChu = (t) => t.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const m = boGhiChu(docNguon('main.js'));
+  const khoi = (dau, sau) => { const i = m.indexOf(dau); const j = m.indexOf(sau, i + 1); return i < 0 ? '' : m.slice(i, j); };
+
+  const dan = khoi("case 'INJECT_PASTE'", "case 'INJECT_CLICK_CREATE'");
+  const iTruoc = dan.indexOf("nhipTT.nghi(tab, 'truocNhap'");
+  const iDan = dan.indexOf('pastePrompt(');
+  const iSau = dan.indexOf("nhipTT.nghi(tab, 'truocTao'");
+  assert.ok(iTruoc >= 0 && iTruoc < iDan, 'chưa nghỉ TRƯỚC khi nhập prompt');
+  assert.ok(iSau > iDan, 'chưa nghỉ SAU khi nhập, trước khi trả lời engine (trước khi bấm Tạo)');
+  assert.ok(iSau < dan.lastIndexOf('return {'), 'phải nghỉ trước khi trả lời engine');
+
+  // KHÔNG nghỉ trong INJECT_CLICK_CREATE: engine đã chụp danh sách thẻ trước
+  // khi gửi lệnh này — nghỉ ở đó thì ảnh chụp cũ, dễ nhận nhầm thẻ.
+  const bam = khoi("case 'INJECT_CLICK_CREATE'", "case 'INJECT_RENAME_INPUT'");
+  assert.ok(bam && !/nhipTT\.nghi/.test(bam), 'không được nghỉ bên trong INJECT_CLICK_CREATE');
+
+  assert.ok(/nhipTT\.nghi\(tab, 'truocDoiTen'/.test(khoi("case 'INJECT_RENAME_INPUT'", "case 'SET_NEXT_FILENAME'")),
+    'chưa nghỉ trước khi đổi tên');
+  const tai = khoi("case 'SET_NEXT_FILENAME'", "case 'UNSET_NEXT_FILENAME'");
+  assert.ok(tai.indexOf("nhipTT.nghi(tab, 'truocTai'") >= 0 &&
+    tai.indexOf("nhipTT.nghi(tab, 'truocTai'") < tai.indexOf('pushName('), 'chưa nghỉ trước khi tải về');
+  const slot = khoi("case 'ACQUIRE_CREATE_SLOT'", "case 'CAN_SHUTDOWN'");
+  assert.ok(slot.indexOf("nhipTT.nghi(tab, 'truocModel'") >= 0 &&
+    slot.indexOf("nhipTT.nghi(tab, 'truocModel'") < slot.indexOf('datModel('), 'chưa nghỉ trước khi đổi model');
+
+  // Gắn cấu hình ở CẢ HAI đường giao việc (bấm Bắt đầu, và mẻ video nối sau ảnh).
+  assert.strictEqual((m.match(/^\s+ganNhipThaoTac\(tab, settings\);/gm) || []).length, 2,
+    'phải gắn nhịp thao tác ở cả hai chỗ giao việc');
+  // Tạm dừng và Dừng cắt ngang lần nghỉ.
+  assert.ok(/nhipTT\.huy\(t\)[\s\S]{0,120}PAUSE_AUTOMATION/.test(m), 'Tạm dừng chưa cắt ngang lần nghỉ');
+  assert.ok(/nhipTT\.huy\(t\)[\s\S]{0,120}STOP_AUTOMATION/.test(m), 'Dừng chưa cắt ngang lần nghỉ');
+});
+
+test('nhịp thao tác: giao diện có ô và gửi đi đúng khoá', () => {
+  const html = docNguon('src', 'ui', 'index.html');
+  for (const id of ['nghiThaoTacBat', 'nghiThaoTacMin', 'nghiThaoTacMax', 'nghiThaoTacHint'])
+    assert.ok(html.includes(`id="${id}"`), `thiếu #${id}`);
+  const app = docNguon('src', 'ui', 'app.js');
+  const fields = app.slice(app.indexOf('const FIELDS'), app.indexOf('];', app.indexOf('const FIELDS')));
+  const sw = app.slice(app.indexOf('const SWITCHES'), app.indexOf('];', app.indexOf('const SWITCHES')));
+  assert.ok(/'nghiThaoTacMin'/.test(fields) && /'nghiThaoTacMax'/.test(fields), 'FIELDS chưa có ô nghỉ — không lưu, không gửi đi');
+  assert.ok(/'nghiThaoTacBat'/.test(sw), 'SWITCHES chưa có công tắc nghỉ');
+  // Khoá giao diện gửi PHẢI đúng khoá tiến trình chính đọc.
+  const nt = docNguon('src', 'main', 'nhip-thao-tac.js');
+  for (const k of ['nghiThaoTacBat', 'nghiThaoTacMin', 'nghiThaoTacMax'])
+    assert.ok(nt.includes('r.' + k), `nhip-thao-tac.js không đọc ${k}`);
+});
+
 // ── Kết luận ───────────────────────────────────────────────────────────────
+(async () => {
+await Promise.all(choAsync);
 console.log('');
 console.log('─'.repeat(58));
 if (failures.length) {
@@ -1668,3 +1791,4 @@ if (failures.length) {
 console.log(`KẾT QUẢ: ${pass}/${pass} PASS`);
 console.log('─'.repeat(58));
 console.log('');
+})();

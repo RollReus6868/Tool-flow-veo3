@@ -339,6 +339,43 @@ async function run(mainWindow, app) {
   // Trả về trống để các bước sau chạy như bản cũ.
   await wc.executeJavaScript(`datChonModel({ chinh: '', phu: '', duPhong: '', xenKeMoi: 0 }); true`);
 
+  // ── 3e2b. Nghỉ giữa các thao tác (2.8.8) ─────────────────────────────
+  //  a. mặc định TẮT, hai ô mờ; b. bật lên → collectSettings() gửi đúng ba
+  //  khoá tiến trình chính đọc; c. gợi ý nói rõ các bước và thời gian thêm;
+  //  d. lưu rồi nạp lại vẫn còn (khoá nằm trong FIELDS/SWITCHES).
+  const nt = await wc.executeJavaScript(`
+    (() => {
+      const q = (id) => document.querySelector(id);
+      const macDinh = { bat: q('#nghiThaoTacBat').checked, mo: q('#nghiThaoTacO').style.opacity,
+                        tatO: q('#nghiThaoTacMin').disabled };
+      const c = q('#nghiThaoTacBat'); c.checked = true; c.dispatchEvent(new Event('change'));
+      q('#nghiThaoTacMin').value = '2'; q('#nghiThaoTacMin').dispatchEvent(new Event('change'));
+      q('#nghiThaoTacMax').value = '6'; q('#nghiThaoTacMax').dispatchEvent(new Event('change'));
+      const s = window.__collectSettings();
+      q('#nghiThaoTacHint').scrollIntoView({ block: 'center' });
+      return { macDinh, gui: { b: s.nghiThaoTacBat, a: s.nghiThaoTacMin, z: s.nghiThaoTacMax },
+               hint: q('#nghiThaoTacHint').textContent, moSau: q('#nghiThaoTacO').style.opacity,
+               moO: !q('#nghiThaoTacMin').disabled };
+    })()
+  `);
+  if (nt.macDinh.bat || !nt.macDinh.tatO) failures.push('Nghỉ giữa thao tác: mặc định phải TẮT và ô mờ — ' + JSON.stringify(nt.macDinh));
+  else note('Nghỉ giữa thao tác: mặc định tắt');
+  if (nt.gui.b !== true || String(nt.gui.a) !== '2' || String(nt.gui.z) !== '6') {
+    failures.push('Nghỉ giữa thao tác: collectSettings gửi sai — ' + JSON.stringify(nt.gui));
+  } else note('Nghỉ giữa thao tác: bật 2–6 s → gửi đúng khoá');
+  if (!/nhập prompt/.test(nt.hint) || !/bấm Tạo/.test(nt.hint) || !/tải về/.test(nt.hint) || !/2–6 giây/.test(nt.hint) || !nt.moO) {
+    failures.push('Nghỉ giữa thao tác: gợi ý/ô chưa đúng — ' + nt.hint);
+  } else note('Nghỉ giữa thao tác: gợi ý nói rõ các bước');
+  await wait(400);
+  {
+    const img = await wc.capturePage();
+    fs.writeFileSync(path.join(SHOT_DIR, 'run-nghi-thao-tac.png'), img.toPNG());
+    note('Đã chụp run-nghi-thao-tac.png');
+  }
+  // Trả về tắt, để các bài sau không bị ảnh hưởng.
+  await wc.executeJavaScript(`(() => { const c = document.querySelector('#nghiThaoTacBat');
+    c.checked = false; c.dispatchEvent(new Event('change')); return true; })()`);
+
   // ── 3e3. Thẻ Cập nhật (2.8.0): vẽ trạng thái "đang tải" và "sẵn sàng cài"
   const cn = await wc.executeJavaScript(`
     (() => {
